@@ -79,11 +79,19 @@ impl StateRegister {
         state.remove_from_out(state_to_remove);
     }
 
-    /// Connect all the existing out connections of a state to some state.
-    fn connect_all_out_to_state(&mut self, state_id: u32, to_state: u32) {
+    /// Connect all the unconnected (`None`) out
+    /// connections of a state to some state.
+    fn connect_dangling_outs_to_state(&mut self, state_id: u32, to_state: u32) {
         let mut state = self.get_mut_state(state_id);
 
-        state.out = state.out.iter().map(|_| Some(to_state)).collect();
+        state.out = state.out.iter().map(
+            |val| {
+                if val.is_some() {
+                    return *val;
+                }
+                return Some(to_state);
+            }
+        ).collect();
     }
 
     /// Register a new state.
@@ -166,24 +174,23 @@ struct Fragment {
 
 
 impl Fragment {
-    /// Attach all the outgoing lines of all the end states
+    /// Attach all the unattached (`None`) outgoing lines of all the end states
     /// of the fragment to a given state.
     fn connect_ends(&self, to_state: u32, register: &mut StateRegister) {
         for end in &self.ends[..] {
-            register.connect_all_out_to_state(*end, to_state);
+            register.connect_dangling_outs_to_state(*end, to_state);
         }
     }
 }
 
-
+/// Convert a regular expression in postfix notation to a NFA.
+/// The NFA is represented by states in a state register, which is returned
+/// together with the id of the start state of the NFA.
 pub fn postfix_regex_to_nfa(postfix_regex: &str) -> (StateRegister, u32) {
     let mut register = StateRegister::new();
     let mut fragment_stack: Vec<Fragment> = Vec::new();
 
     for character in postfix_regex.chars() {
-        // TODO: Debug statement, remove
-        println!("Processing character {}", character);
-
         match character {
             // Concatenation
             '.' => {
@@ -237,6 +244,25 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> (StateRegister, u32) {
                     ends: [&fragment_1.ends[..], &fragment_2.ends[..]].concat()
                 };
                 fragment_stack.push(split_fragment);
+            },
+            // Zero or one
+            '?' => {
+                let fragment_or_none = fragment_stack.pop();
+
+                if fragment_or_none.is_none() {
+                    panic!("Unexpected None in zero or more!");
+                }
+
+                let fragment = fragment_or_none.unwrap();
+
+                let split_state = register.new_split(Some(fragment.start), None);
+
+                let zero_or_one_fragment = Fragment {
+                    start: split_state,
+                    ends: [&fragment.ends[..], &[split_state]].concat()
+                };
+
+                fragment_stack.push(zero_or_one_fragment);
             },
             // Default: literal character
             _ => {
