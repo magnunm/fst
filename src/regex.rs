@@ -2,6 +2,8 @@ use std::str;
 use std::vec::Vec;
 use std::fmt;
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::mem;
 
 pub enum StateType {
     Split,
@@ -277,6 +279,7 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> (StateRegister, u32) {
 
 /// Traverse a NFA given by a start state and state register to which it
 /// belongs, printing the nodes as we go along.
+/// For debugging the creation of the NFA.
 pub fn print_nfa(start_id: u32, register: &StateRegister) {
     let start = register.get_state(start_id);
 
@@ -295,19 +298,111 @@ pub fn print_nfa(start_id: u32, register: &StateRegister) {
     }
 }
 
+fn insert_or_follow_split(into: &mut HashSet<u32>, state: &State, state_id: u32, register: &StateRegister) {
+    match state.state_type {
+        StateType::Split => {
+            let state_id_split_1 = state.out[0].unwrap();
+            let state_split_1: &State = register.get_state(state_id_split_1);
+            insert_or_follow_split(
+                into,
+                state_split_1,
+                state_id_split_1,
+                register
+            );
+
+            let state_id_split_2 = state.out[1].unwrap();
+            let state_split_2: &State = register.get_state(state_id_split_2);
+            insert_or_follow_split(
+                into,
+                state_split_2,
+                state_id_split_2,
+                register
+            );
+        },
+        _ => {
+            into.insert(state_id);
+        }
+    }
+}
+
+pub fn simulate_nfa(input: &str, start: u32, register: &StateRegister) -> bool {
+    // Current states the NFA is in.
+    // A hash set since it should not contain the same state twice.
+    let mut current: HashSet<u32> = HashSet::new();
+    insert_or_follow_split(
+        &mut current, register.get_state(start), start, register
+    );
+
+    // States the NFA will be in after the current character
+    let mut next: HashSet<u32> = HashSet::new();
+
+    for character in input.chars() {
+        // Use the current states to compute the next states given the
+        // character in the input string
+        for state_id in current.iter() {
+            let state: &State = register.get_state(*state_id);
+
+            match state.state_type {
+                StateType::Match => {
+                    // Already in the match state. No need to iterate further
+                    // as this means we have a match.
+                    return true;
+                },
+                StateType::Literal(c) => {
+                    if c == character {
+                        let next_state_id = state.out[0].unwrap();
+                        let next_state = register.get_state(next_state_id);
+                        // The hash set guarantees this does not insert the
+                        // state if it is already in `next`.
+                        // Any split will be followed and the output
+                        // states of that split will be added instead.
+                        insert_or_follow_split(
+                            &mut next, next_state, next_state_id, register
+                        );
+                    }
+                },
+                StateType::Split => {
+                    // We should never reach a split here. That is the job of
+                    // `insert_or_follow_split` to ensure.
+                    panic!("Unexpected split found in `current`!");
+                }
+            }
+        }
+
+        // Next becomes the new current, and the new next is initialized.
+        mem::swap(&mut current, &mut next);
+        next.clear();
+    }
+
+    // If the current states contain the match state after all characters
+    // are iterated over then we have a match.
+    for state in current {
+        match register.get_state(state).state_type {
+            StateType::Match => { return true; },
+            _ => ()
+        }
+    }
+    return false;
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-/*
     #[test]
-    fn test_one_or_more() {
-        assert_eq!(match_from_beginning("aaab", "a+b"), 4);
-        assert_eq!(match_from_beginning("ab", "a+b"), 2);
-        assert_eq!(match_from_beginning("b", "a+b"), 0);
-        assert_eq!(match_from_beginning("baa", "ba+"), 3);
+    fn test_postfix_regex_nfa_matching() {
+        let postfix_regex: &str = "abc|.";
+        let (register, start_state_for_nfa) = postfix_regex_to_nfa(&postfix_regex);
+        let match_postfix_regex = | input: &str | -> bool {
+            simulate_nfa(&input, start_state_for_nfa, &register)
+        };
+
+        assert!(match_postfix_regex("ab"));
+        assert!(match_postfix_regex("ac"));
+        assert!(match_postfix_regex("abx"));
+        assert!(!match_postfix_regex("a"));
+        assert!(!match_postfix_regex("aa"));
+        assert!(!match_postfix_regex(""));
     }
-*/
 }
 
