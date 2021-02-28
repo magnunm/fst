@@ -1,9 +1,197 @@
 use std::str;
+use std::string::String;
 use std::vec::Vec;
 use std::fmt;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::mem;
+
+/// Operator precedence for regex operators. Higher value
+/// means higher precedence.
+fn precedence(regex_operator: char) -> u32 {
+    match regex_operator {
+        '|' => 1,  // Alteration (or)
+        '~' => 3,  // Concatenation (and)
+        '*' => 4,  // Zero or more
+        '+' => 4,  // One or more
+        '?' => 4,  // Zero or one
+        _ => { panic!("Invalid regex operator") }
+    }
+}
+
+/// Pop from `from` into `to`. Returns `true` if there was anything to pop.
+fn pop_into(from: &mut Vec<char>, to: &mut String) -> bool {
+    let popped = from.pop();
+
+    if popped.is_some() {
+        to.push(popped.unwrap());
+        return true;
+    }
+    return false;
+}
+
+/// Pop from `from` into `to` if predicate returns true on the last element
+/// of `from`. Returns true if the move happened.
+fn pop_into_if<F>(from: &mut Vec<char>, to: &mut String, predicate: &F) -> bool where
+    F: Fn(char) -> bool {
+    if from.len() == 0 {
+        return false;
+    }
+
+    if predicate(from[from.len() - 1]) {
+        return pop_into(from, to);
+    }
+    return false;
+}
+
+/// Pop from `from` into `to` while predicate returns true on the last element
+/// of `from` or until the `from` vector is empty.
+fn pop_into_while<F>(from: &mut Vec<char>, to: &mut String, predicate: &F) where
+    F: Fn(char) -> bool {
+    while pop_into_if(from, to, predicate) {}
+}
+
+/// Use the Shunting-yard algorithm to convert a regex written in
+/// infix notation to a postifix regex.
+/// Also the infix notation does not use a excplicit concatenation
+/// operator, while the postfix notation does.
+fn regex_infix_to_postfix(regex: &str) -> String {
+    let mut output = String::new();
+    let mut operator_stack: Vec<char> = Vec::new();
+    let mut previous_char: Option<char> = None;
+    let mut escaped: bool = false;
+
+    for character in regex.chars() {
+        // For debugging
+        // TODO: Remove
+        println!("Current char: {}", character);
+        println!("Current out: {}", output);
+        println!("Current operator stack: {:?}", operator_stack);
+
+        // If the current character is escaped then we push it directly to
+        // the output without parsing it
+        if escaped {
+            output.push(character);
+            continue;
+        }
+
+        // The escape character is pushed directly to the output, setting
+        // escaped = true. This is because the escape character (\) is not
+        // postfixed even in the postifix notation.
+        if character == '\\' {
+            output.push('\\');
+            escaped = true;
+            continue;
+        }
+
+        // The infix notation does not use a explicit concatenation character
+        // (~), so if we see one here we should treat it as a literal character
+        // but escape it in the output.
+        if character == '~' {
+            output.push('\\');
+        }
+
+        // Determine if the current character should be concatenated with the
+        // previous. If so we temporarily act as if we were looking at a
+        // concatenation character (~).
+        let no_concatenate_previous: bool;
+
+        if previous_char.is_some() {
+            // Don't concatenate if current character is an operator or a
+            // closing bracket.
+            // Don't concatenate is the previous character was a alteration or
+            // a opening bracket.
+            no_concatenate_previous =
+                ['*', '+', '?', '|', ')'].contains(&character) ||
+                ['|', '('].contains(&previous_char.unwrap());
+        }
+        else {
+            // Can't concatenate if there is no previous character.
+            no_concatenate_previous = true;
+        }
+
+        if !no_concatenate_previous {
+            // Pretend we are looking at a concatenation character (~)
+            // instead of the currenet character.
+            let opening_bracket_on_operator_stack_top: bool =
+                operator_stack.last() == Some(&'(');
+
+            if !opening_bracket_on_operator_stack_top {
+                // Pop all operators from the operator stack to the output
+                // that have higher precedence than the current operator.
+                // Then push the current operator to the operator stack.
+                // If the top of the operator stack has a opening paren
+                // just push the current operator to the stack
+                pop_into_while(
+                    &mut operator_stack,
+                    &mut output,
+                    &|c: char| {
+                        precedence(c) > precedence('~')
+                    }
+                );
+            }
+            operator_stack.push('~');
+        }
+
+        // Handle the current character
+        match character {
+            // Operators. Exluding concatenation which is not treated as
+            // an operator in the infix notation so should match a literal
+            // character here.
+            '*' | '+' | '?' | '|' => {
+                let opening_bracket_on_operator_stack_top: bool =
+                    operator_stack.last() == Some(&'(');
+
+                if !opening_bracket_on_operator_stack_top {
+                    // Pop all operators from the operator stack to the output
+                    // that have higher precedence than the current operator.
+                    // Then push the current operator to the operator stack.
+                    // If the top of the operator stack has a opening paren
+                    // just push the current operator to the stack
+                    pop_into_while(
+                        &mut operator_stack,
+                        &mut output,
+                        &|c: char| {
+                            precedence(c) > precedence(character)
+                        }
+                    );
+                }
+                operator_stack.push(character);
+            },
+            // Parentheses: grouping
+            '(' => {
+                operator_stack.push('(');
+            },
+            ')' => {
+                pop_into_while(
+                    &mut operator_stack,
+                    &mut output,
+                    &| c: char | c != '('
+                );
+                operator_stack.pop();  // Discard the opening bracket (
+                // Discard the closing bracket )
+            }
+            // Default: Literal character
+            _ => {
+                output.push(character);
+            }
+        }
+
+        // Set the previous character
+        previous_char = Some(character);
+    }
+
+    // If there are any operators left on the operator stack, add them to
+    // the output
+    pop_into_while(
+        &mut operator_stack,
+        &mut output,
+        &| _ | true
+    );
+
+    output
+}
+
 
 pub enum StateType {
     Split,
@@ -466,6 +654,22 @@ mod tests {
         assert!(match_postfix_regex("aaaaaaaaaaaa⻘⻘⻘⻘⻘⻘"));
         assert!(!match_postfix_regex("aøø⻘"));  // Too many ø
         assert!(!match_postfix_regex("aø"));  // Too few ⻘
+    }
+
+    #[test]
+    fn test_regex_infix_to_postfix() {
+        assert_eq!(
+            &regex_infix_to_postfix("a(b|c)"),
+            "abc|~"
+        );
+        assert_eq!(
+            &regex_infix_to_postfix("(a|⻘)c"),
+            "a⻘|c~"
+        );
+        assert_eq!(
+            &regex_infix_to_postfix("(a|b)*c+"),
+            "ab|*c+~"
+        );
     }
 }
 
