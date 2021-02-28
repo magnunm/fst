@@ -498,9 +498,18 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> (StateRegister, u32) {
 
 /// Traverse a NFA given by a start state and state register to which it
 /// belongs, printing the nodes as we go along.
-/// For debugging the creation of the NFA.
-pub fn print_nfa(start_id: u32, register: &StateRegister) {
+/// Only used for debugging the creation of the NFA.
+pub fn print_nfa(start_id: u32, register: &StateRegister, visited: &mut HashSet<u32>) {
     let start = register.get_state(start_id);
+
+    // To avoid infinte recursion we need to remember the states we
+    // have already visited.
+    if visited.contains(&start_id) {
+        println!("{}", start);
+        return;
+    }
+
+    visited.insert(start_id);
 
     match start.state_type {
         StateType::Match => {
@@ -510,7 +519,7 @@ pub fn print_nfa(start_id: u32, register: &StateRegister) {
             println!("{}", start);
             for out_state_id in &start.out[..] {
                 if out_state_id.is_some() {
-                    print_nfa(out_state_id.unwrap(), register);
+                    print_nfa(out_state_id.unwrap(), register, visited);
                 }
             }
         }
