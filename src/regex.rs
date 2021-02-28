@@ -496,6 +496,12 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> (StateRegister, u32) {
     // NFA can be traversed following the out id's.
     let final_fragment_or_none = fragment_stack.pop();
 
+    if fragment_stack.len() > 0 {
+        // More than one fragment left means the passed postifx regex
+        // was ill formed.
+        panic!("Invalid postfix regex. More than one final fragment in construction.");
+    }
+
     if final_fragment_or_none.is_some() {
         let final_fragment = final_fragment_or_none.unwrap();
         let match_state = register.match_state();
