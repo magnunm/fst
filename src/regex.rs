@@ -232,7 +232,6 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> (StateRegister, u32) {
             // Zero or one
             '?' => {
                 let fragment = pop_or_panic(&mut fragment_stack, None);
-
                 let split_state = register.new_split(Some(fragment.start), None);
 
                 let zero_or_one_fragment = Fragment {
@@ -241,6 +240,34 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> (StateRegister, u32) {
                 };
 
                 fragment_stack.push(zero_or_one_fragment);
+            },
+            // Zero or more
+            '*' => {
+                let fragment = pop_or_panic(&mut fragment_stack, None);
+                let split_state = register.new_split(Some(fragment.start), None);
+
+                fragment.connect_ends(split_state, &mut register);
+
+                let zero_or_more_fragment = Fragment {
+                    start: split_state,
+                    ends: vec![split_state]
+                };
+
+                fragment_stack.push(zero_or_more_fragment);
+            },
+            // One or more
+            '+' => {
+                let fragment = pop_or_panic(&mut fragment_stack, None);
+                let split_state = register.new_split(Some(fragment.start), None);
+
+                fragment.connect_ends(split_state, &mut register);
+
+                let one_or_more_fragment = Fragment {
+                    start: fragment.start,
+                    ends: vec![split_state]
+                };
+
+                fragment_stack.push(one_or_more_fragment);
             },
             // Default: literal character
             _ => {
@@ -406,7 +433,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_postfix_regex_nfa_matching() {
+    fn test_postfix_regex_nfa_matching_1() {
+        // Test or and concatenation
         let postfix_regex: &str = "abc|.";
         let (register, start_state_for_nfa) = postfix_regex_to_nfa(&postfix_regex);
         let match_postfix_regex = | input: &str | -> bool {
@@ -419,6 +447,25 @@ mod tests {
         assert!(!match_postfix_regex("a"));
         assert!(!match_postfix_regex("aa"));
         assert!(!match_postfix_regex(""));
+    }
+
+    #[test]
+    fn test_postfix_regex_nfa_matching_2() {
+        // Test zero or more, one or more, zero or one
+        // Test unicode support
+        let postfix_regex: &str = "a*ø?.⻘+.";
+        let (register, start_state_for_nfa) = postfix_regex_to_nfa(&postfix_regex);
+        let match_postfix_regex = | input: &str | -> bool {
+            simulate_nfa(&input, start_state_for_nfa, &register)
+        };
+
+        assert!(match_postfix_regex("a⻘"));
+        assert!(match_postfix_regex("aø⻘"));
+        assert!(match_postfix_regex("⻘"));
+        assert!(match_postfix_regex("ø⻘"));
+        assert!(match_postfix_regex("aaaaaaaaaaaa⻘⻘⻘⻘⻘⻘"));
+        assert!(!match_postfix_regex("aøø⻘"));  // Too many ø
+        assert!(!match_postfix_regex("aø"));  // Too few ⻘
     }
 }
 
