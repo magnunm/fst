@@ -327,9 +327,8 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
             start_state: final_fragment.start
         };
     }
-    else {
-        panic!("Unexpected empty stack after loop end!")
-    }
+
+    panic!("Unexpected empty stack after loop end!")
 }
 
 // Implementations
