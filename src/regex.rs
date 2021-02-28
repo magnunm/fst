@@ -194,17 +194,9 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> (StateRegister, u32) {
         match character {
             // Concatenation
             '.' => {
-                let fragment_2_or_none = fragment_stack.pop();
-                let fragment_1_or_none = fragment_stack.pop();
-
-                if fragment_1_or_none.is_none() || fragment_2_or_none.is_none() {
-                    // TODO: Handle is none
-                    panic!("Unexpected None in concatenation!")
-                }
-
                 // Connect the ends of fragment_1 to the start of fragment_2
-                let fragment_1 = fragment_1_or_none.unwrap();
-                let fragment_2 = fragment_2_or_none.unwrap();
+                let fragment_2 = pop_or_panic(&mut fragment_stack, None);
+                let fragment_1 = pop_or_panic(&mut fragment_stack, None);
 
                 fragment_1.connect_ends(fragment_2.start, &mut register);
 
@@ -218,16 +210,8 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> (StateRegister, u32) {
             },
             // Or operation
             '|' => {
-                let fragment_2_or_none = fragment_stack.pop();
-                let fragment_1_or_none = fragment_stack.pop();
-
-                if fragment_1_or_none.is_none() || fragment_2_or_none.is_none() {
-                    // TODO: Handle is none
-                    panic!("Unexpected None in or!")
-                }
-
-                let fragment_1 = fragment_1_or_none.unwrap();
-                let fragment_2 = fragment_2_or_none.unwrap();
+                let fragment_2 = pop_or_panic(&mut fragment_stack, None);
+                let fragment_1 = pop_or_panic(&mut fragment_stack, None);
 
                 // Create a new split state which has the start states of the
                 // two fragments as the two choices.
@@ -247,13 +231,7 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> (StateRegister, u32) {
             },
             // Zero or one
             '?' => {
-                let fragment_or_none = fragment_stack.pop();
-
-                if fragment_or_none.is_none() {
-                    panic!("Unexpected None in zero or more!");
-                }
-
-                let fragment = fragment_or_none.unwrap();
+                let fragment = pop_or_panic(&mut fragment_stack, None);
 
                 let split_state = register.new_split(Some(fragment.start), None);
 
@@ -409,6 +387,18 @@ pub fn simulate_nfa(input: &str, start: u32, register: &StateRegister) -> bool {
         }
     }
     return false;
+}
+
+/// pop the last element from a vector, panic if empty
+fn pop_or_panic<T>(vector: &mut Vec<T>, panic_message: Option<&'static str>) -> T {
+    let result: Option<T> = vector.pop();
+    if result.is_some() {
+        return result.unwrap();
+    }
+    match panic_message {
+        Some(message) => panic!(panic_message),
+        _ => panic!("Attempted pop of empty vector.")
+    }
 }
 
 #[cfg(test)]
