@@ -69,7 +69,7 @@ pub fn regex_to_nfa(regex: &str) -> NFA {
     postfix_regex_to_nfa(&postfix_regex)
 }
 
-/// Use the Shunting-yard algorithm to convert a regex written in
+/// Use the Shunting-Yard algorithm to convert a regex written in
 /// infix notation to a postifix regex.
 /// Also the infix notation does not use a excplicit concatenation
 /// operator, while the postfix notation does.
@@ -112,23 +112,20 @@ fn regex_infix_to_postfix(regex: &str) -> String {
         // Determine if the current character should be concatenated with the
         // previous. If so we temporarily act as if we were looking at a
         // concatenation character (~).
-        let no_concatenate_previous: bool;
+        let mut concatenate_previous: bool = false;
 
         if previous_char.is_some() {
             // Don't concatenate if current character is an operator or a
             // closing bracket.
             // Don't concatenate is the previous character was a alteration or
             // a opening bracket.
-            no_concatenate_previous =
+            concatenate_previous = !(
                 ['*', '+', '?', '|', ')'].contains(&character) ||
-                ['|', '('].contains(&previous_char.unwrap());
-        }
-        else {
-            // Can't concatenate if there is no previous character.
-            no_concatenate_previous = true;
+                    ['|', '('].contains(&previous_char.unwrap())
+            );
         }
 
-        if !no_concatenate_previous {
+        if concatenate_previous {
             // Pretend we are looking at a concatenation character (~)
             // instead of the currenet character.
             let opening_bracket_on_operator_stack_top: bool =
