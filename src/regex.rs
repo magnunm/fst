@@ -632,7 +632,7 @@ fn pop_or_panic<T>(vector: &mut Vec<T>, panic_message: Option<&'static str>) -> 
         return result.unwrap();
     }
     match panic_message {
-        Some(message) => panic!(panic_message),
+        Some(message) => panic!(message),
         _ => panic!("Attempted pop of empty vector.")
     }
 }
