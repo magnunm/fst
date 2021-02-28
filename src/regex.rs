@@ -381,7 +381,7 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> (StateRegister, u32) {
     for character in postfix_regex.chars() {
         match character {
             // Concatenation
-            '.' => {
+            '~' => {
                 // Connect the ends of fragment_1 to the start of fragment_2
                 let fragment_2 = pop_or_panic(&mut fragment_stack, None);
                 let fragment_1 = pop_or_panic(&mut fragment_stack, None);
@@ -632,7 +632,7 @@ mod tests {
     #[test]
     fn test_postfix_regex_nfa_matching_1() {
         // Test or and concatenation
-        let postfix_regex: &str = "abc|.";
+        let postfix_regex: &str = "abc|~";
         let (register, start_state_for_nfa) = postfix_regex_to_nfa(&postfix_regex);
         let match_postfix_regex = | input: &str | -> bool {
             simulate_nfa(&input, start_state_for_nfa, &register)
@@ -650,7 +650,7 @@ mod tests {
     fn test_postfix_regex_nfa_matching_2() {
         // Test zero or more, one or more, zero or one
         // Test unicode support
-        let postfix_regex: &str = "a*ø?.⻘+.";
+        let postfix_regex: &str = "a*ø?~⻘+~";
         let (register, start_state_for_nfa) = postfix_regex_to_nfa(&postfix_regex);
         let match_postfix_regex = | input: &str | -> bool {
             simulate_nfa(&input, start_state_for_nfa, &register)
