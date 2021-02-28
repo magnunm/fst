@@ -6,17 +6,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::mem;
 
-/// Convert a regular expression to a NFA (non-deterministic finite
-/// automaton).
-/// Works by first converting the regular expression to postfix notation and
-/// then applying Thompson's construction to that expression.
-/// The NFA is represented by states in a state register, which is returned
-/// together with the id of the start state of the NFA.
-pub fn regex_to_nfa(regex: &str) -> (StateRegister, u32) {
-    let postfix_regex: String = regex_infix_to_postfix(regex);
-    postfix_regex_to_nfa(&postfix_regex)
-}
-
 // Types
 
 pub enum StateType {
@@ -55,6 +44,17 @@ struct Fragment {
 }
 
 // Main algorithms
+
+/// Convert a regular expression to a NFA (non-deterministic finite
+/// automaton).
+/// Works by first converting the regular expression to postfix notation and
+/// then applying Thompson's construction to that expression.
+/// The NFA is represented by states in a state register, which is returned
+/// together with the id of the start state of the NFA.
+pub fn regex_to_nfa(regex: &str) -> (StateRegister, u32) {
+    let postfix_regex: String = regex_infix_to_postfix(regex);
+    postfix_regex_to_nfa(&postfix_regex)
+}
 
 /// Use the Shunting-yard algorithm to convert a regex written in
 /// infix notation to a postifix regex.
