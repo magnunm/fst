@@ -8,12 +8,7 @@ use std::mem;
 
 // Types
 
-pub enum StateType {
-    Split,
-    Match,
-    Literal(char)
-}
-
+/// A state in a NFA (non-deterministic finite automaton).
 pub struct State {
     state_type: StateType,
 
@@ -21,6 +16,16 @@ pub struct State {
     // These states are referenced by their id, to find the actual states
     // one must go via the StateRegister.
     out: Vec<Option<u32>>
+}
+
+/// Types of states in the NFA's built from regular expressions.
+pub enum StateType {
+    // Connects to two states via empty/epsilon arrows
+    Split,
+    // The special state representing a match to the regex. No outgoing arrows.
+    Match,
+    // A literal character. Contains just a single arrow out with that character.
+    Literal(char)
 }
 
 /// The state register contains and owns states. The states are accessed
@@ -328,6 +333,8 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> (StateRegister, u32) {
     }
 }
 
+/// Run a NFA with a given input string.
+/// The simulation can be in multiple NFA states at the same time.
 pub fn simulate_nfa(input: &str, start: u32, register: &StateRegister) -> bool {
     // Current states the NFA is in.
     // A hash set since it should not contain the same state twice.
@@ -544,7 +551,7 @@ fn precedence(regex_operator: char) -> u32 {
     }
 }
 
-/// Pop from `from` into `to`. Returns `true` if there was anything to pop.
+/// Pop into `to`. Returns `true` if there was anything to pop.
 fn pop_into(from: &mut Vec<char>, to: &mut String) -> bool {
     let popped = from.pop();
 
@@ -555,7 +562,7 @@ fn pop_into(from: &mut Vec<char>, to: &mut String) -> bool {
     return false;
 }
 
-/// Pop from `from` into `to` if predicate returns true on the last element
+/// Pop into `to` if predicate returns true on the last element
 /// of `from`. Returns true if the move happened.
 fn pop_into_if<F>(from: &mut Vec<char>, to: &mut String, predicate: &F) -> bool where
     F: Fn(char) -> bool {
@@ -569,7 +576,7 @@ fn pop_into_if<F>(from: &mut Vec<char>, to: &mut String, predicate: &F) -> bool 
     return false;
 }
 
-/// Pop from `from` into `to` while predicate returns true on the last element
+/// Pop into `to` while predicate returns true on the last element
 /// of `from` or until the `from` vector is empty.
 fn pop_into_while<F>(from: &mut Vec<char>, to: &mut String, predicate: &F) where
     F: Fn(char) -> bool {
@@ -606,6 +613,9 @@ pub fn print_nfa(start_id: u32, register: &StateRegister, visited: &mut HashSet<
     }
 }
 
+/// Insert the state id of a state into `into`, unless the state is a split.
+/// For a split follow the out arrows and call this function recursively on
+/// the states they point to.
 fn insert_or_follow_split(into: &mut HashSet<u32>, state: &State, state_id: u32, register: &StateRegister) {
     match state.state_type {
         StateType::Split => {
