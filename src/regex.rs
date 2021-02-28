@@ -594,23 +594,14 @@ fn pop_into_while<F>(from: &mut Vec<char>, to: &mut String, predicate: &F) where
 fn insert_or_follow_split(into: &mut HashSet<u32>, state: &State, state_id: u32, register: &StateRegister) {
     match state.state_type {
         StateType::Split => {
-            let state_id_split_1 = state.out[0].unwrap();
-            let state_split_1: &State = register.get_state(state_id_split_1);
-            insert_or_follow_split(
-                into,
-                state_split_1,
-                state_id_split_1,
-                register
-            );
+            for state_out_id_or_none in &state.out {
+                let state_out_id = state_out_id_or_none.unwrap();
+                let state_out: &State = register.get_state(state_out_id);
 
-            let state_id_split_2 = state.out[1].unwrap();
-            let state_split_2: &State = register.get_state(state_id_split_2);
-            insert_or_follow_split(
-                into,
-                state_split_2,
-                state_id_split_2,
-                register
-            );
+                insert_or_follow_split(
+                    into, state_out, state_out_id, register
+                );
+            }
         },
         _ => {
             into.insert(state_id);
