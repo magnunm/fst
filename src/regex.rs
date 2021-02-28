@@ -6,6 +6,17 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::mem;
 
+/// Convert a regular expression to a NFA (non-deterministic finite
+/// automaton).
+/// Works by first converting the regular expression to postfix notation and
+/// then applying Thompson's construction to that expression.
+/// The NFA is represented by states in a state register, which is returned
+/// together with the id of the start state of the NFA.
+pub fn regex_to_nfa(regex: &str) -> (StateRegister, u32) {
+    let postfix_regex: String = regex_infix_to_postfix(regex);
+    postfix_regex_to_nfa(&postfix_regex)
+}
+
 /// Operator precedence for regex operators. Higher value
 /// means higher precedence.
 fn precedence(regex_operator: char) -> u32 {
@@ -371,6 +382,7 @@ impl Fragment {
     }
 }
 
+
 /// Convert a regular expression in postfix notation to a NFA.
 /// The NFA is represented by states in a state register, which is returned
 /// together with the id of the start state of the NFA.
@@ -628,6 +640,41 @@ fn pop_or_panic<T>(vector: &mut Vec<T>, panic_message: Option<&'static str>) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_regex_nfa_matching_1() {
+        let regex: &str = "(a|⻘)c";
+        let (register, start_state_for_nfa) = regex_to_nfa(&regex);
+
+        let match_regex = | input: &str | -> bool {
+            simulate_nfa(&input, start_state_for_nfa, &register)
+        };
+
+        assert!(match_regex("ac"));
+        assert!(match_regex("⻘c"));
+        assert!(!match_regex("a"));  // Missing c
+        assert!(!match_regex("c"));  // Missing first char
+        assert!(!match_regex("xc"));  // Wrong first char
+    }
+
+    #[test]
+    fn test_regex_nfa_matching_2() {
+        let regex: &str = "(a|b)*c+";
+        let (register, start_state_for_nfa) = regex_to_nfa(&regex);
+
+        let match_regex = | input: &str | -> bool {
+            simulate_nfa(&input, start_state_for_nfa, &register)
+        };
+
+        assert!(match_regex("ac"));
+        assert!(match_regex("c"));
+        assert!(match_regex("aaaac"));
+        assert!(match_regex("accccc"));
+        assert!(match_regex("bc"));
+        assert!(match_regex("abc"));  // Both characters allowed in zero or more
+        assert!(!match_regex("b"));  // Too few c
+        assert!(!match_regex(""));  // Too few c
+    }
 
     #[test]
     fn test_postfix_regex_nfa_matching_1() {
