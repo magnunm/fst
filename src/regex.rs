@@ -79,6 +79,29 @@ fn regex_infix_to_postfix(regex: &str) -> String {
     let mut previous_char: Option<char> = None;
     let mut escaped: bool = false;
 
+    // While iterating over the regex characters, handle a operator:
+    // If not a opening paren, pop all operators from the operator stack to the
+    // output that have higher precedence than the current operator.
+    // Push the current operator to the operator stack.
+    fn handle_current_char_is_operator(current_char: char,
+                                       output: &mut String,
+                                       operator_stack: &mut Vec<char>) {
+        let opening_bracket_on_operator_stack_top: bool =
+            operator_stack.last() == Some(&'(');
+
+        if !opening_bracket_on_operator_stack_top {
+            pop_into_while(
+                operator_stack,
+                output,
+                &|c: char| {
+                    precedence(c) > precedence(current_char)
+                }
+            );
+        }
+
+        operator_stack.push(current_char);
+    };
+
     for character in regex.chars() {
         // For debugging
         // TODO: Remove
@@ -128,24 +151,9 @@ fn regex_infix_to_postfix(regex: &str) -> String {
         if concatenate_previous {
             // Pretend we are looking at a concatenation character (~)
             // instead of the currenet character.
-            let opening_bracket_on_operator_stack_top: bool =
-                operator_stack.last() == Some(&'(');
-
-            if !opening_bracket_on_operator_stack_top {
-                // Pop all operators from the operator stack to the output
-                // that have higher precedence than the current operator.
-                // Then push the current operator to the operator stack.
-                // If the top of the operator stack has a opening paren
-                // just push the current operator to the stack
-                pop_into_while(
-                    &mut operator_stack,
-                    &mut output,
-                    &|c: char| {
-                        precedence(c) > precedence('~')
-                    }
-                );
-            }
-            operator_stack.push('~');
+            handle_current_char_is_operator(
+                '~', &mut output, &mut operator_stack
+            );
         }
 
         // Handle the current character
@@ -154,24 +162,9 @@ fn regex_infix_to_postfix(regex: &str) -> String {
             // an operator in the infix notation so should match a literal
             // character here.
             '*' | '+' | '?' | '|' => {
-                let opening_bracket_on_operator_stack_top: bool =
-                    operator_stack.last() == Some(&'(');
-
-                if !opening_bracket_on_operator_stack_top {
-                    // Pop all operators from the operator stack to the output
-                    // that have higher precedence than the current operator.
-                    // Then push the current operator to the operator stack.
-                    // If the top of the operator stack has a opening paren
-                    // just push the current operator to the stack
-                    pop_into_while(
-                        &mut operator_stack,
-                        &mut output,
-                        &|c: char| {
-                            precedence(c) > precedence(character)
-                        }
-                    );
-                }
-                operator_stack.push(character);
+                handle_current_char_is_operator(
+                    character, &mut output, &mut operator_stack
+                );
             },
             // Parentheses: grouping
             '(' => {
