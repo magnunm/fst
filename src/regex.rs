@@ -28,6 +28,9 @@ pub enum StateType {
     Literal(char),
     // The dot character class. Represents any single character
     Dot,
+    // A bracket character class. Represents any character in the bracket
+    // expression. Stores the bracket expression.
+    Bracket(String),
 }
 
 /// The state register contains and owns states. The states are accessed
@@ -104,91 +107,123 @@ fn regex_infix_to_postfix(regex: &str) -> String {
         operator_stack.push(current_char);
     };
 
-    for character in regex.chars() {
-        // For debugging
-        // TODO: Remove
-        println!("Current char: {}", character);
-        println!("Current out: {}", output);
-        println!("Current operator stack: {:?}", operator_stack);
+    let mut regex_chars = regex.chars();
 
-        // If the current character is escaped then we push it directly to
-        // the output without parsing it
-        if escaped {
-            output.push(character);
-            continue;
-        }
+    loop {
+        if let Some(character) = regex_chars.next() {
+            // For debugging
+            // TODO: Remove
+            println!("Current char: {}", character);
+            println!("Current out: {}", output);
+            println!("Current operator stack: {:?}", operator_stack);
 
-        // The escape character is pushed directly to the output, setting
-        // escaped = true. This is because the escape character (\) is not
-        // postfixed even in the postifix notation.
-        if character == '\\' {
-            output.push('\\');
-            escaped = true;
-            continue;
-        }
-
-        // The infix notation does not use a explicit concatenation character
-        // (~), so if we see one here we should treat it as a literal character
-        // but escape it in the output.
-        if character == '~' {
-            output.push('\\');
-        }
-
-        // Determine if the current character should be concatenated with the
-        // previous. If so we temporarily act as if we were looking at a
-        // concatenation character (~).
-        let mut concatenate_previous: bool = false;
-
-        if previous_char.is_some() {
-            // Don't concatenate if current character is an operator or a
-            // closing bracket.
-            // Don't concatenate is the previous character was a alteration or
-            // a opening bracket.
-            concatenate_previous = !(
-                ['*', '+', '?', '|', ')'].contains(&character) ||
-                    ['|', '('].contains(&previous_char.unwrap())
-            );
-        }
-
-        if concatenate_previous {
-            // Pretend we are looking at a concatenation character (~)
-            // instead of the currenet character.
-            handle_current_char_is_operator(
-                '~', &mut output, &mut operator_stack
-            );
-        }
-
-        // Handle the current character
-        match character {
-            // Operators. Exluding concatenation which is not treated as
-            // an operator in the infix notation so should match a literal
-            // character here.
-            '*' | '+' | '?' | '|' => {
-                handle_current_char_is_operator(
-                    character, &mut output, &mut operator_stack
-                );
-            },
-            // Parentheses: grouping
-            '(' => {
-                operator_stack.push('(');
-            },
-            ')' => {
-                pop_into_while(
-                    &mut operator_stack,
-                    &mut output,
-                    &| c: char | c != '('
-                );
-                operator_stack.pop();  // Discard the opening bracket (
-                // Discard the closing bracket )
-            }
-            // Default: Literal character
-            _ => {
+            // If the current character is escaped then we push it directly to
+            // the output without parsing it
+            if escaped {
                 output.push(character);
+                continue;
             }
-        }
 
-        // Set the previous character
-        previous_char = Some(character);
+            // The escape character is pushed directly to the output, setting
+            // escaped = true. This is because the escape character (\) is not
+            // postfixed even in the postifix notation.
+            if character == '\\' {
+                output.push('\\');
+                escaped = true;
+                continue;
+            }
+
+            // The infix notation does not use a explicit concatenation character
+            // (~), so if we see one here we should treat it as a literal character
+            // but escape it in the output.
+            if character == '~' {
+                output.push('\\');
+            }
+
+            // Determine if the current character should be concatenated with the
+            // previous. If so we temporarily act as if we were looking at a
+            // concatenation character (~).
+            let mut concatenate_previous: bool = false;
+
+            if previous_char.is_some() {
+                // Don't concatenate if current character is an operator or a
+                // closing bracket.
+                // Don't concatenate is the previous character was a alteration or
+                // a opening bracket.
+                concatenate_previous = !(
+                    ['*', '+', '?', '|', ')'].contains(&character) ||
+                        ['|', '('].contains(&previous_char.unwrap())
+                );
+            }
+
+            if concatenate_previous {
+                // Pretend we are looking at a concatenation character (~)
+                // instead of the currenet character.
+                handle_current_char_is_operator(
+                    '~', &mut output, &mut operator_stack
+                );
+            }
+
+            // Anything inside a bracket character class is treated as literal.
+            // Therefore we push the entire bracket to the output before we
+            // continue.
+            if character == '[' {
+                output.push('[');
+
+                loop {
+                    let bracketed_char = regex_chars.next();
+
+                    if let Some(c) = bracketed_char {
+                        output.push(c);
+
+                        if c == ']' {
+                            break;
+                        }
+                    }
+                    else {
+                        panic!("Unexpeced end of regex before end of bracket. Did you mean to escape the opening bracket?");
+                    }
+                }
+
+                previous_char = Some(']');
+                continue;
+            }
+
+            // Handle the current character
+            match character {
+                // Operators. Exluding concatenation which is not treated as
+                // an operator in the infix notation so should match a literal
+                // character here.
+                '*' | '+' | '?' | '|' => {
+                    handle_current_char_is_operator(
+                        character, &mut output, &mut operator_stack
+                    );
+                },
+                // Parentheses: grouping
+                '(' => {
+                    operator_stack.push('(');
+                },
+                ')' => {
+                    pop_into_while(
+                        &mut operator_stack,
+                        &mut output,
+                        &| c: char | c != '('
+                    );
+                    operator_stack.pop();  // Discard the opening bracket (
+                    // Discard the closing bracket )
+                }
+                // Default: Literal character
+                _ => {
+                    output.push(character);
+                }
+            }
+
+            // Set the previous character
+            previous_char = Some(character);
+        }
+        else {
+            break;
+        }
     }
 
     // If there are any operators left on the operator stack, add them to
@@ -207,10 +242,12 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
     let mut register = StateRegister::new();
     let mut fragment_stack: Vec<Fragment> = Vec::new();
 
-    for character in postfix_regex.chars() {
-        match character {
+    let mut postfix_regex_chars = postfix_regex.chars();
+
+    loop {
+        match postfix_regex_chars.next() {
             // Concatenation
-            '~' => {
+            Some('~') => {
                 // Connect the ends of fragment_1 to the start of fragment_2
                 let fragment_2 = pop_or_panic(&mut fragment_stack, None);
                 let fragment_1 = pop_or_panic(&mut fragment_stack, None);
@@ -226,7 +263,7 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
                 fragment_stack.push(fused_fragment);
             },
             // Or operation
-            '|' => {
+            Some('|') => {
                 let fragment_2 = pop_or_panic(&mut fragment_stack, None);
                 let fragment_1 = pop_or_panic(&mut fragment_stack, None);
 
@@ -247,7 +284,7 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
                 fragment_stack.push(split_fragment);
             },
             // Zero or one
-            '?' => {
+            Some('?') => {
                 let fragment = pop_or_panic(&mut fragment_stack, None);
                 let split_state = register.new_split(Some(fragment.start), None);
 
@@ -259,7 +296,7 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
                 fragment_stack.push(zero_or_one_fragment);
             },
             // Zero or more
-            '*' => {
+            Some('*') => {
                 let fragment = pop_or_panic(&mut fragment_stack, None);
                 let split_state = register.new_split(Some(fragment.start), None);
 
@@ -273,7 +310,7 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
                 fragment_stack.push(zero_or_more_fragment);
             },
             // One or more
-            '+' => {
+            Some('+') => {
                 let fragment = pop_or_panic(&mut fragment_stack, None);
                 let split_state = register.new_split(Some(fragment.start), None);
 
@@ -287,33 +324,49 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
                 fragment_stack.push(one_or_more_fragment);
             },
             // The dot character class
-            '.' => {
+            Some('.') => {
                 let dot = register.new_dot(None);
 
                 let single_dot_fragment = Fragment {
                     start: dot,
                     ends: vec![dot]
                 };
-
                 fragment_stack.push(single_dot_fragment);
             },
+            // A bracket character class
+            Some('[') => {
+                // The NFA state stores here the expression inside the bracket.
+                // It is parsed as a literal string.
+                let mut bracketed_expression = String::new();
+
+                loop {
+                    let character = postfix_regex_chars.next();
+                    match character {
+                        Some(']') => break,
+                        Some(c) => bracketed_expression.push(c),
+                        None => panic!("End of regex before end of bracket")
+                    }
+                }
+
+                let bracket = register.new_bracket(&bracketed_expression, None);
+
+                let single_bracket_fragment = Fragment {
+                    start: bracket,
+                    ends: vec![bracket]
+                };
+                fragment_stack.push(single_bracket_fragment);
+            },
             // Default: literal character
-            _ => {
-                // Push a fragment to the stack which contains just the
-                // single literal state created by the literal character
-                // with no out state
-                let literal = register.new_literal(
-                    character,
-                    None
-                );
+            Some(character) => {
+                let literal = register.new_literal(character, None);
 
                 let single_literal_fragment = Fragment {
                     start: literal,
                     ends: vec![literal]
                 };
-
                 fragment_stack.push(single_literal_fragment);
-            }
+            },
+            None => break
         }
     }
 
@@ -388,7 +441,7 @@ impl NFA {
             for state_id in current.iter() {
                 let state: &State = register.get_state(*state_id);
 
-                match state.state_type {
+                match &state.state_type {
                     StateType::Match => {
                         // Already in the match state. No need to iterate further
                         // as this means we have a match.
@@ -396,7 +449,7 @@ impl NFA {
                     },
                     // Literal: follow out if current matches literal's char
                     StateType::Literal(c) => {
-                        if c == character {
+                        if *c == character {
                             follow_first_out_arrow(state, &mut next, register);
                         }
                     },
@@ -404,6 +457,13 @@ impl NFA {
                     // regardless of what the current character is
                     StateType::Dot => {
                         follow_first_out_arrow(state, &mut next, register);
+                    },
+                    // With a bracket state we follow the output arrow if
+                    // the current character matches the bracket.
+                    StateType::Bracket(bracketed) => {
+                        if matches_bracket(character, bracketed) {
+                            follow_first_out_arrow(state, &mut next, register);
+                        }
                     },
                     StateType::Split => {
                         // We should never reach a split here. That is the job of
@@ -510,6 +570,13 @@ impl StateRegister {
         self.new_state(StateType::Dot, vec![out_state])
     }
 
+    fn new_bracket(&mut self, contains: &str, out_state: Option<u32>) -> u32 {
+        self.new_state(
+            StateType::Bracket(String::from(contains)),
+            vec![out_state]
+        )
+    }
+
     fn new_split(&mut self, out_state_1: Option<u32>, out_state_2: Option<u32>) -> u32 {
         self.new_state(
             StateType::Split,
@@ -555,9 +622,10 @@ impl StateRegister {
 
 impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.state_type {
+        match &self.state_type {
             StateType::Literal(c) => write!(f, "Literal ({}) ->", c),
             StateType::Dot => write!(f, "Dot (.) ->"),
+            StateType::Bracket(bracketed) => write!(f, "Bracket ([{}]) ->", &bracketed),
             StateType::Split => write!(f, "Split <- () ->"),
             StateType::Match => write!(f, "MATCH ()")
         }
@@ -684,6 +752,50 @@ fn pop_or_panic<T>(vector: &mut Vec<T>, panic_message: Option<&'static str>) -> 
     }
 }
 
+/// Check if a character mathces a regex bracket expression.
+fn matches_bracket(character: char, bracketed_expression: &str) -> bool {
+    let mut bracketed_chars = bracketed_expression.chars();
+
+    // Iterate in triplets in order to support ranges.
+    let mut previous: Option<char> = bracketed_chars.next();
+    let mut current: Option<char> = bracketed_chars.next();
+    let mut next: Option<char> = bracketed_chars.next();
+
+    while previous.is_some() {
+        if current == Some('-') && next.is_some() {
+            // We are looking at a valid range
+            if char_in_range(character, previous.unwrap(), next.unwrap()) {
+                return true;
+            }
+
+            // Go to the next triplet of characters
+            previous = bracketed_chars.next();
+            current = bracketed_chars.next();
+            next = bracketed_chars.next();
+        }
+        else {
+            // Base case: three characters that are not a valid range
+            if character == previous.unwrap() {
+                return true;
+            }
+
+            previous = current;
+            current = next;
+            next = bracketed_chars.next();
+        }
+    }
+
+    false
+}
+
+/// Is a character in the given character range.
+fn char_in_range(character: char, range_start: char, range_end: char) -> bool {
+    if range_start < range_end {
+        return range_start <= character && character <= range_end
+    }
+    panic!(format!("Invalid range: {}-{}", range_start, range_end))
+}
+
 // Tests
 
 #[cfg(test)]
@@ -722,13 +834,15 @@ mod tests {
     #[test]
     fn test_regex_nfa_matching_3() {
         // Test character classes
-        let regex: &str = ".*a";  // Any string that ends in `a`
+        let regex: &str = ".*a[0-9]+";  // Any string that ends in `a` + number
         let nfa = regex_to_nfa(&regex);
 
-        assert!(nfa.simulate("a"));
-        assert!(nfa.simulate("åa"));
-        assert!(nfa.simulate("教育漢字a"));
+        assert!(nfa.simulate("a2021"));
+        assert!(nfa.simulate("åa9"));
+        assert!(nfa.simulate("教育漢字a0"));
         assert!(!nfa.simulate("b"));
+        assert!(!nfa.simulate("a"));
+        assert!(!nfa.simulate("aO"));
     }
 
     #[test]
@@ -774,6 +888,17 @@ mod tests {
         assert_eq!(
             &regex_infix_to_postfix("(a|b)*c+"),
             "ab|*c+~"
+        );
+        // Test that the concatenation operator is escaped in the
+        // postfix notation.
+        assert_eq!(
+            &regex_infix_to_postfix("~+|a~"),
+            "\\~+a\\~~|"
+        );
+        // Test that anything inside brackets is treated as literal.
+        assert_eq!(
+            &regex_infix_to_postfix("r[*+]a"),
+            "r[*+]a~~"
         );
     }
 }
