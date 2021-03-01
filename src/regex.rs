@@ -25,7 +25,9 @@ pub enum StateType {
     // The special state representing a match to the regex. No outgoing arrows.
     Match,
     // A literal character. Contains just a single arrow out with that character.
-    Literal(char)
+    Literal(char),
+    // The dot character class. Represents any single character
+    Dot,
 }
 
 /// The state register contains and owns states. The states are accessed
@@ -284,6 +286,17 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
 
                 fragment_stack.push(one_or_more_fragment);
             },
+            // The dot character class
+            '.' => {
+                let dot = register.new_dot(None);
+
+                let single_dot_fragment = Fragment {
+                    start: dot,
+                    ends: vec![dot]
+                };
+
+                fragment_stack.push(single_dot_fragment);
+            },
             // Default: literal character
             _ => {
                 // Push a fragment to the stack which contains just the
@@ -352,6 +365,23 @@ impl NFA {
         // States the NFA will be in after the current character
         let mut next: HashSet<u32> = HashSet::new();
 
+        // Follow the first out arrow of a state and insert the state
+        // at the end of it into the next states.
+        // The hash set guarantees this does not insert the
+        // state if it is already in `next`.
+        // Any split will be followed and the output
+        // states of that split will be added instead.
+        fn follow_first_out_arrow(state: &State,
+                                  next: &mut HashSet<u32>,
+                                  register: &StateRegister) {
+            let next_state_id = state.out[0].unwrap();
+            let next_state = register.get_state(next_state_id);
+
+            insert_or_follow_split(
+                next, next_state, next_state_id, register
+            );
+        };
+
         for character in input.chars() {
             // Use the current states to compute the next states given the
             // character in the input string
@@ -364,18 +394,16 @@ impl NFA {
                         // as this means we have a match.
                         return true;
                     },
+                    // Literal: follow out if current matches literal's char
                     StateType::Literal(c) => {
                         if c == character {
-                            let next_state_id = state.out[0].unwrap();
-                            let next_state = register.get_state(next_state_id);
-                            // The hash set guarantees this does not insert the
-                            // state if it is already in `next`.
-                            // Any split will be followed and the output
-                            // states of that split will be added instead.
-                            insert_or_follow_split(
-                                &mut next, next_state, next_state_id, register
-                            );
+                            follow_first_out_arrow(state, &mut next, register);
                         }
+                    },
+                    // With a dot state we follow the output arrow
+                    // regardless of what the current character is
+                    StateType::Dot => {
+                        follow_first_out_arrow(state, &mut next, register);
                     },
                     StateType::Split => {
                         // We should never reach a split here. That is the job of
@@ -478,6 +506,10 @@ impl StateRegister {
         )
     }
 
+    fn new_dot(&mut self, out_state: Option<u32>) -> u32 {
+        self.new_state(StateType::Dot, vec![out_state])
+    }
+
     fn new_split(&mut self, out_state_1: Option<u32>, out_state_2: Option<u32>) -> u32 {
         self.new_state(
             StateType::Split,
@@ -525,6 +557,7 @@ impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.state_type {
             StateType::Literal(c) => write!(f, "Literal ({}) ->", c),
+            StateType::Dot => write!(f, "Dot (.) ->"),
             StateType::Split => write!(f, "Split <- () ->"),
             StateType::Match => write!(f, "MATCH ()")
         }
@@ -659,6 +692,7 @@ mod tests {
 
     #[test]
     fn test_regex_nfa_matching_1() {
+        // Test alteration, unicode, concatenation
         let regex: &str = "(a|⻘)c";
         let nfa = regex_to_nfa(&regex);
 
@@ -671,6 +705,7 @@ mod tests {
 
     #[test]
     fn test_regex_nfa_matching_2() {
+        // Test one or more, zero or more
         let regex: &str = "(a|b)*c+";
         let nfa = regex_to_nfa(&regex);
 
@@ -682,6 +717,18 @@ mod tests {
         assert!(nfa.simulate("abc"));  // Both characters allowed in zero or more
         assert!(!nfa.simulate("b"));  // Too few c
         assert!(!nfa.simulate(""));  // Too few c
+    }
+
+    #[test]
+    fn test_regex_nfa_matching_3() {
+        // Test character classes
+        let regex: &str = ".*a";  // Any string that ends in `a`
+        let nfa = regex_to_nfa(&regex);
+
+        assert!(nfa.simulate("a"));
+        assert!(nfa.simulate("åa"));
+        assert!(nfa.simulate("教育漢字a"));
+        assert!(!nfa.simulate("b"));
     }
 
     #[test]
