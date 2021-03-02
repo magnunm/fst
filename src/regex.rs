@@ -82,7 +82,6 @@ fn regex_infix_to_postfix(regex: &str) -> String {
     let mut output = String::new();
     let mut operator_stack: Vec<char> = Vec::new();
     let mut previous_char: Option<char> = None;
-    let mut escaped: bool = false;
 
     // While iterating over the regex characters, handle a operator:
     // If not a opening paren, pop all operators from the operator stack to the
@@ -117,32 +116,11 @@ fn regex_infix_to_postfix(regex: &str) -> String {
             println!("Current out: {}", output);
             println!("Current operator stack: {:?}", operator_stack);
 
-            // If the current character is escaped then we push it directly to
-            // the output without parsing it
-            if escaped {
-                output.push(character);
-                continue;
-            }
-
-            // The escape character is pushed directly to the output, setting
-            // escaped = true. This is because the escape character (\) is not
-            // postfixed even in the postifix notation.
-            if character == '\\' {
-                output.push('\\');
-                escaped = true;
-                continue;
-            }
-
-            // The infix notation does not use a explicit concatenation character
-            // (~), so if we see one here we should treat it as a literal character
-            // but escape it in the output.
-            if character == '~' {
-                output.push('\\');
-            }
-
             // Determine if the current character should be concatenated with the
             // previous. If so we temporarily act as if we were looking at a
-            // concatenation character (~).
+            // concatenation character (~). Since in infix notation this
+            // operator would be between the two characters this logic needs
+            // to go first.
             let mut concatenate_previous: bool = false;
 
             if previous_char.is_some() {
@@ -162,6 +140,35 @@ fn regex_infix_to_postfix(regex: &str) -> String {
                 handle_current_char_is_operator(
                     '~', &mut output, &mut operator_stack
                 );
+            }
+
+            // If the current character is escaped then we push it directly to
+            // the output without parsing it, together with the escape
+            // character, which is prefixed also in th postfix notation.
+            if character == '\\' {
+                output.push('\\');
+
+                if let Some(escaped_char) = regex_chars.next() {
+                    output.push(escaped_char);
+                }
+                else {
+                    panic!("Regex cannot end in escape");
+                }
+
+                // To handle concatenation correctly on the next iteration the
+                // previous character must be recongized as a literal char.
+                // The actual value does not matter.
+                previous_char = Some('a');
+                continue;
+            }
+
+            // The infix notation does not use a explicit concatenation character
+            // (~), so if we see one here we should treat it as a literal
+            // character but escape it in the output.
+            if character == '~' {
+                output.push('\\');
+                output.push(character);
+                continue;
             }
 
             // Anything inside a bracket character class is treated as literal.
@@ -899,6 +906,19 @@ mod tests {
         assert_eq!(
             &regex_infix_to_postfix("r[*+]a"),
             "r[*+]a~~"
+        );
+        // Test escaping
+        assert_eq!(
+            &regex_infix_to_postfix("(\\.\\*)+"),
+            "\\.\\*~+"
+        );
+        assert_eq!(
+            &regex_infix_to_postfix("a\\.*"),
+            "a\\.*~"
+        );
+        assert_eq!(
+            &regex_infix_to_postfix("a|\\+"),
+            "a\\+|"
         );
     }
 }
