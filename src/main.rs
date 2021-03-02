@@ -5,21 +5,26 @@ mod regex;
 
 
 fn main() -> io::Result<()> {
-    let regex: &str = "(a|⻘)*c+";
+    // A possible email regex
+    let regex: &str = "[a-zA-Z0-9]+@[a-zA-Z0-9]+\\.[a-zA-Z0-9]+";
     let nfa = regex::regex_to_nfa(&regex);
 
     regex::print_nfa(nfa.start_state, &nfa.state_register, &mut HashSet::new());
 
     let stdin = io::stdin();
-    let input = stdin.lock().lines().next().unwrap().unwrap();
+    let mut input = stdin.lock().lines().next().unwrap().unwrap();
 
-    let is_match = nfa.simulate(&input);
+    while input != "q" {
+        let is_match = nfa.simulate(&input);
 
-    if is_match {
-        println!("Match!");
-    }
-    else {
-        println!("No match!");
+        if is_match {
+            println!("Match!");
+        }
+        else {
+            println!("No match!");
+        }
+
+        input = stdin.lock().lines().next().unwrap().unwrap();
     }
     Ok(())
 }

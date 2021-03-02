@@ -253,6 +253,22 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
 
     loop {
         match postfix_regex_chars.next() {
+            // Escaped character
+            Some('\\') => {
+                // Treat the next character as literal regardless
+                if let Some(character) = postfix_regex_chars.next() {
+                    let literal = register.new_literal(character, None);
+
+                    let single_literal_fragment = Fragment {
+                        start: literal,
+                        ends: vec![literal]
+                    };
+                    fragment_stack.push(single_literal_fragment);
+                }
+                else {
+                    panic!("Postfix regex cannot end in a escape");
+                }
+            },
             // Concatenation
             Some('~') => {
                 // Connect the ends of fragment_1 to the start of fragment_2
@@ -850,6 +866,20 @@ mod tests {
         assert!(!nfa.simulate("b"));
         assert!(!nfa.simulate("a"));
         assert!(!nfa.simulate("aO"));
+    }
+
+    #[test]
+    fn test_regex_nfa_matching_4() {
+        // Test escaping
+        let regex: &str = "(\\.\\*)+";  // One or more literal .*
+        let nfa = regex_to_nfa(&regex);
+
+        assert!(nfa.simulate(".*.*.*.*"));
+        assert!(nfa.simulate(".*"));
+        assert!(!nfa.simulate("."));
+        assert!(!nfa.simulate("a"));
+        assert!(!nfa.simulate("\\.\\*"));
+        assert!(!nfa.simulate("\\."));
     }
 
     #[test]
