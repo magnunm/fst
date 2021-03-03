@@ -7,7 +7,8 @@ mod regex;
 fn main() -> io::Result<()> {
     // A possible email regex
     let regex: &str = "[a-zA-Z0-9]+@[a-zA-Z0-9]+\\.[a-zA-Z0-9]+";
-    let nfa = regex::regex_to_nfa(&regex);
+    let postfix_regex: String = regex::regex_infix_to_postfix(regex);
+    let nfa = regex::postfix_regex_to_nfa(&postfix_regex);
 
     regex::print_nfa(nfa.start_state, &nfa.state_register, &mut HashSet::new());
 

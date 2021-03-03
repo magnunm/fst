@@ -1,3 +1,9 @@
+/// Convert a regular expression to a NFA (non-deterministic finite
+/// automaton).
+/// Works by first converting the regular expression to postfix notation and
+/// then applying Thompson's construction to that expression.
+/// The NFA is represented by states in a state register, to simulate the
+/// NFA we need this and the id of the start state of the NFA.
 use std::str;
 use std::string::String;
 use std::vec::Vec;
@@ -8,8 +14,8 @@ use std::mem;
 // Types
 
 /// A state in a NFA (non-deterministic finite automaton).
-pub struct State {
-    state_type: StateType,
+pub struct State<'a> {
+    state_type: StateType<'a>,
 
     // The states at the ends of the outgoing arrows of this state, if any
     // These states are referenced by their id, to find the actual states
@@ -18,7 +24,7 @@ pub struct State {
 }
 
 /// Types of states in the NFA's built from regular expressions.
-pub enum StateType {
+pub enum StateType<'a> {
     // Connects to two states via empty/epsilon arrows
     Split,
     // The special state representing a match to the regex. No outgoing arrows.
@@ -29,21 +35,24 @@ pub enum StateType {
     Dot,
     // A bracket character class. Represents any character in the bracket
     // expression. Stores the bracket expression.
-    Bracket(String),
+    // To avoid allocating new memory this is made to take a reference to a
+    // slice of the original regex string. This we do via lifetimes, and it
+    // means that the regex string needs to live longer than the NFA states.
+    Bracket(&'a str),
 }
 
 /// The state register contains and owns states. The states are accessed
 /// through it, and it manages the lifetime of the states.
-pub struct StateRegister {
-    states: Vec<State>,
+pub struct StateRegister<'a> {
+    states: Vec<State<'a>>,
     current_id: usize
 }
 
 /// A non-deterministic finite automaton.
 /// Defined by a state register which contains all the states, and the id of
 /// the entry point (start state) of the NFA.
-pub struct NFA {
-    pub state_register: StateRegister,
+pub struct NFA<'a> {
+    pub state_register: StateRegister<'a>,
     pub start_state: usize
 }
 
@@ -62,22 +71,11 @@ struct Fragment {
 
 // Main algorithms
 
-/// Convert a regular expression to a NFA (non-deterministic finite
-/// automaton).
-/// Works by first converting the regular expression to postfix notation and
-/// then applying Thompson's construction to that expression.
-/// The NFA is represented by states in a state register, which is returned
-/// together with the id of the start state of the NFA.
-pub fn regex_to_nfa(regex: &str) -> NFA {
-    let postfix_regex: String = regex_infix_to_postfix(regex);
-    postfix_regex_to_nfa(&postfix_regex)
-}
-
 /// Use the Shunting-Yard algorithm to convert a regex written in
 /// infix notation to a postifix regex.
 /// Also the infix notation does not use a excplicit concatenation
 /// operator, while the postfix notation does.
-fn regex_infix_to_postfix(regex: &str) -> String {
+pub fn regex_infix_to_postfix(regex: &str) -> String {
     let mut output = String::new();
     let mut operator_stack: Vec<char> = Vec::new();
     let mut previous_char: Option<char> = None;
@@ -244,18 +242,18 @@ fn regex_infix_to_postfix(regex: &str) -> String {
 }
 
 /// Convert a regular expression in postfix notation to a NFA.
-pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
+pub fn postfix_regex_to_nfa<'a>(postfix_regex: &'a str) -> NFA<'a> {
     let mut register = StateRegister::new();
     let mut fragment_stack: Vec<Fragment> = Vec::new();
 
-    let mut postfix_regex_chars = postfix_regex.chars();
+    let mut postfix_regex_char_indices = postfix_regex.char_indices();
 
     loop {
-        match postfix_regex_chars.next() {
+        match postfix_regex_char_indices.next() {
             // Escaped character
-            Some('\\') => {
+            Some((_, '\\')) => {
                 // Treat the next character as literal regardless
-                if let Some(character) = postfix_regex_chars.next() {
+                if let Some((_, character)) = postfix_regex_char_indices.next() {
                     let literal = register.new_literal(character, None);
 
                     let single_literal_fragment = Fragment {
@@ -269,7 +267,7 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
                 }
             },
             // Concatenation
-            Some('~') => {
+            Some((_, '~')) => {
                 // Connect the ends of fragment_1 to the start of fragment_2
                 let fragment_2 = pop_or_panic(&mut fragment_stack, None);
                 let fragment_1 = pop_or_panic(&mut fragment_stack, None);
@@ -285,7 +283,7 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
                 fragment_stack.push(fused_fragment);
             },
             // Or operation
-            Some('|') => {
+            Some((_, '|')) => {
                 let fragment_2 = pop_or_panic(&mut fragment_stack, None);
                 let fragment_1 = pop_or_panic(&mut fragment_stack, None);
 
@@ -306,7 +304,7 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
                 fragment_stack.push(split_fragment);
             },
             // Zero or one
-            Some('?') => {
+            Some((_, '?')) => {
                 let fragment = pop_or_panic(&mut fragment_stack, None);
                 let split_state = register.new_split(Some(fragment.start), None);
 
@@ -318,7 +316,7 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
                 fragment_stack.push(zero_or_one_fragment);
             },
             // Zero or more
-            Some('*') => {
+            Some((_, '*')) => {
                 let fragment = pop_or_panic(&mut fragment_stack, None);
                 let split_state = register.new_split(Some(fragment.start), None);
 
@@ -332,7 +330,7 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
                 fragment_stack.push(zero_or_more_fragment);
             },
             // One or more
-            Some('+') => {
+            Some((_, '+')) => {
                 let fragment = pop_or_panic(&mut fragment_stack, None);
                 let split_state = register.new_split(Some(fragment.start), None);
 
@@ -346,7 +344,7 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
                 fragment_stack.push(one_or_more_fragment);
             },
             // The dot character class
-            Some('.') => {
+            Some((_, '.')) => {
                 let dot = register.new_dot(None);
 
                 let single_dot_fragment = Fragment {
@@ -356,21 +354,28 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
                 fragment_stack.push(single_dot_fragment);
             },
             // A bracket character class
-            Some('[') => {
+            Some((char_byte_index, '[')) => {
                 // The NFA state stores here the expression inside the bracket.
-                // It is parsed as a literal string.
-                let mut bracketed_expression = String::new();
+                // To avoid allocation it stores a slice into to postifix
+                // regex. This means wee need the character byte index where the
+                // bracket ends.
+                let end_bracket_char_byte_index;
 
                 loop {
-                    let character = postfix_regex_chars.next();
-                    match character {
-                        Some(']') => break,
-                        Some(c) => bracketed_expression.push(c),
+                    match postfix_regex_char_indices.next() {
+                        Some((i, ']')) => {
+                            end_bracket_char_byte_index = i;
+                            break;
+                        },
+                        Some(_) => (),
                         None => panic!("End of regex before end of bracket")
                     }
                 }
 
-                let bracket = register.new_bracket(&bracketed_expression, None);
+                let bracket = register.new_bracket(
+                    &postfix_regex[char_byte_index..end_bracket_char_byte_index],
+                    None
+                );
 
                 let single_bracket_fragment = Fragment {
                     start: bracket,
@@ -379,7 +384,7 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
                 fragment_stack.push(single_bracket_fragment);
             },
             // Default: literal character
-            Some(character) => {
+            Some((_, character)) => {
                 let literal = register.new_literal(character, None);
 
                 let single_literal_fragment = Fragment {
@@ -421,7 +426,7 @@ pub fn postfix_regex_to_nfa(postfix_regex: &str) -> NFA {
 
 // Implementations
 
-impl NFA {
+impl<'a> NFA<'a> {
     /// Run the NFA with a given input string.
     /// The simulation can be in multiple NFA states at the same time.
     pub fn simulate(&self, input: &str) -> bool {
@@ -512,8 +517,8 @@ impl NFA {
     }
 }
 
-impl StateRegister {
-    fn new() -> StateRegister {
+impl<'a> StateRegister<'a> {
+    fn new() -> StateRegister<'a> {
         StateRegister {
             states: Vec::new(),
             current_id: 0
@@ -521,7 +526,7 @@ impl StateRegister {
     }
 
     /// Get a state by id, panic if it does not exist.
-    fn get_state(&self, state_id: usize) -> &State {
+    fn get_state(&self, state_id: usize) -> &State<'a> {
         let ref_to_state_or_none = self.states.get(state_id);
 
         if ref_to_state_or_none.is_some() {
@@ -531,7 +536,7 @@ impl StateRegister {
     }
 
     /// Get a mutable state by id, panic if it does not exist.
-    fn get_mut_state(&mut self, state_id: usize) -> &mut State {
+    fn get_mut_state(&mut self, state_id: usize) -> &mut State<'a> {
         let mut_ref_to_state_or_none = self.states.get_mut(state_id);
 
         if mut_ref_to_state_or_none.is_some() {
@@ -557,7 +562,7 @@ impl StateRegister {
 
     /// Register a new state.
     /// Return the unique id of that state.
-    fn new_state(&mut self, state_type: StateType, out: Vec<Option<usize>>) -> usize {
+    fn new_state(&mut self, state_type: StateType<'a>, out: Vec<Option<usize>>) -> usize {
         self.states.push(State { state_type, out });
 
         // Increment the current id so that the returned id from this function
@@ -577,9 +582,9 @@ impl StateRegister {
         self.new_state(StateType::Dot, vec![out_state])
     }
 
-    fn new_bracket(&mut self, contains: &str, out_state: Option<usize>) -> usize {
+    fn new_bracket(&mut self, contains: &'a str, out_state: Option<usize>) -> usize {
         self.new_state(
-            StateType::Bracket(String::from(contains)),
+            StateType::Bracket(contains),
             vec![out_state]
         )
     }
@@ -599,7 +604,7 @@ impl StateRegister {
     }
 }
 
-impl fmt::Display for State {
+impl<'a> fmt::Display for State<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.state_type {
             StateType::Literal(c) => write!(f, "Literal ({}) ->", c),
@@ -611,10 +616,10 @@ impl fmt::Display for State {
     }
 }
 
-impl Fragment {
+impl<'a> Fragment {
     /// Attach all the unattached (`None`) outgoing lines of all the end states
     /// of the fragment to a given state.
-    fn connect_ends(&self, to_state: usize, register: &mut StateRegister) {
+    fn connect_ends(&self, to_state: usize, register: &mut StateRegister<'a>) {
         for end in &self.ends[..] {
             register.connect_dangling_outs_to_state(*end, to_state);
         }
@@ -785,7 +790,8 @@ mod tests {
     fn test_regex_nfa_matching_1() {
         // Test alteration, unicode, concatenation
         let regex: &str = "(a|⻘)c";
-        let nfa = regex_to_nfa(&regex);
+        let postfix_regex: String = regex_infix_to_postfix(regex);
+        let nfa = postfix_regex_to_nfa(&postfix_regex);
 
         assert!(nfa.simulate("ac"));
         assert!(nfa.simulate("⻘c"));
@@ -798,7 +804,8 @@ mod tests {
     fn test_regex_nfa_matching_2() {
         // Test one or more, zero or more
         let regex: &str = "(a|b)*c+";
-        let nfa = regex_to_nfa(&regex);
+        let postfix_regex: String = regex_infix_to_postfix(regex);
+        let nfa = postfix_regex_to_nfa(&postfix_regex);
 
         assert!(nfa.simulate("ac"));
         assert!(nfa.simulate("c"));
@@ -814,7 +821,8 @@ mod tests {
     fn test_regex_nfa_matching_3() {
         // Test character classes
         let regex: &str = ".*a[0-9]+";  // Any string that ends in `a` + number
-        let nfa = regex_to_nfa(&regex);
+        let postfix_regex: String = regex_infix_to_postfix(regex);
+        let nfa = postfix_regex_to_nfa(&postfix_regex);
 
         assert!(nfa.simulate("a2021"));
         assert!(nfa.simulate("åa9"));
@@ -828,7 +836,8 @@ mod tests {
     fn test_regex_nfa_matching_4() {
         // Test escaping
         let regex: &str = "(\\.\\*)+";  // One or more literal .*
-        let nfa = regex_to_nfa(&regex);
+        let postfix_regex: String = regex_infix_to_postfix(regex);
+        let nfa = postfix_regex_to_nfa(&postfix_regex);
 
         assert!(nfa.simulate(".*.*.*.*"));
         assert!(nfa.simulate(".*"));
