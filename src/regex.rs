@@ -513,12 +513,6 @@ impl NFA {
     }
 }
 
-impl State {
-    fn remove_from_out(&mut self, id: u32) {
-        self.out.retain(|val| *val != Some(id));
-    }
-}
-
 impl StateRegister {
     fn new() -> StateRegister {
         StateRegister {
@@ -545,12 +539,6 @@ impl StateRegister {
             return mut_ref_to_state_or_none.unwrap()
         }
         panic!("No state with id {}", state_id);
-    }
-
-    /// Remove a state from the out states of a state
-    fn remove_from_out(&mut self, state_id: u32, state_to_remove: u32) {
-        let state = self.get_mut_state(state_id);
-        state.remove_from_out(state_to_remove);
     }
 
     /// Connect all the unconnected (`None`) out
@@ -612,34 +600,6 @@ impl StateRegister {
             StateType::Match,
             vec![]
         )
-    }
-
-    /// Get all states that point to a given state. Note that since
-    /// the states only store the states they point to, not the states
-    /// that point to it this requires iterating over all states.
-    fn in_states(&self, state_id: u32) -> Vec<u32> {
-        let mut result: Vec<u32> = Vec::new();
-
-        for (id, state) in self.states.iter() {
-            if state.out.iter().find(|&&x| x == Some(state_id)).is_some() {
-                result.push(*id);
-            }
-        }
-
-        result
-    }
-
-    /// Remove a state and all references to it from the register.
-    /// This requires finding all states that point to the given state
-    /// and removing the state from their out states list.
-    fn remove_state(&mut self, state_to_remove: u32) {
-        let all_ids: Vec<u32> = self.states.iter().map(|(id, _)| *id).collect();
-
-        for id in all_ids {
-            self.remove_from_out(id, state_to_remove);
-        }
-
-        self.states.remove(&state_to_remove);
     }
 }
 
