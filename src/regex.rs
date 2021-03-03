@@ -2,7 +2,6 @@ use std::str;
 use std::string::String;
 use std::vec::Vec;
 use std::fmt;
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::mem;
 
@@ -15,7 +14,7 @@ pub struct State {
     // The states at the ends of the outgoing arrows of this state, if any
     // These states are referenced by their id, to find the actual states
     // one must go via the StateRegister.
-    out: Vec<Option<u32>>
+    out: Vec<Option<usize>>
 }
 
 /// Types of states in the NFA's built from regular expressions.
@@ -36,8 +35,8 @@ pub enum StateType {
 /// The state register contains and owns states. The states are accessed
 /// through it, and it manages the lifetime of the states.
 pub struct StateRegister {
-    states: HashMap<u32, State>,
-    current_id: u32
+    states: Vec<State>,
+    current_id: usize
 }
 
 /// A non-deterministic finite automaton.
@@ -45,7 +44,7 @@ pub struct StateRegister {
 /// the entry point (start state) of the NFA.
 pub struct NFA {
     pub state_register: StateRegister,
-    pub start_state: u32
+    pub start_state: usize
 }
 
 /// A graph of states with a single input state. Represented
@@ -57,8 +56,8 @@ pub struct NFA {
 /// given StateRegister.
 /// Represents a fragment of a finite automaton.
 struct Fragment {
-    start: u32,
-    ends: Vec<u32>
+    start: usize,
+    ends: Vec<usize>
 }
 
 // Main algorithms
@@ -430,7 +429,7 @@ impl NFA {
 
         // Current states the NFA is in.
         // A hash set since it should not contain the same state twice.
-        let mut current: HashSet<u32> = HashSet::new();
+        let mut current: HashSet<usize> = HashSet::new();
         insert_or_follow_split(
             &mut current,
             register.get_state(self.start_state),
@@ -439,7 +438,7 @@ impl NFA {
         );
 
         // States the NFA will be in after the current character
-        let mut next: HashSet<u32> = HashSet::new();
+        let mut next: HashSet<usize> = HashSet::new();
 
         // Follow the first out arrow of a state and insert the state
         // at the end of it into the next states.
@@ -448,7 +447,7 @@ impl NFA {
         // Any split will be followed and the output
         // states of that split will be added instead.
         fn follow_first_out_arrow(state: &State,
-                                  next: &mut HashSet<u32>,
+                                  next: &mut HashSet<usize>,
                                   register: &StateRegister) {
             let next_state_id = state.out[0].unwrap();
             let next_state = register.get_state(next_state_id);
@@ -516,14 +515,14 @@ impl NFA {
 impl StateRegister {
     fn new() -> StateRegister {
         StateRegister {
-            states: HashMap::new(),
+            states: Vec::new(),
             current_id: 0
         }
     }
 
     /// Get a state by id, panic if it does not exist.
-    fn get_state(&self, state_id: u32) -> &State {
-        let ref_to_state_or_none = self.states.get(&state_id);
+    fn get_state(&self, state_id: usize) -> &State {
+        let ref_to_state_or_none = self.states.get(state_id);
 
         if ref_to_state_or_none.is_some() {
             return ref_to_state_or_none.unwrap()
@@ -532,8 +531,8 @@ impl StateRegister {
     }
 
     /// Get a mutable state by id, panic if it does not exist.
-    fn get_mut_state(&mut self, state_id: u32) -> &mut State {
-        let mut_ref_to_state_or_none = self.states.get_mut(&state_id);
+    fn get_mut_state(&mut self, state_id: usize) -> &mut State {
+        let mut_ref_to_state_or_none = self.states.get_mut(state_id);
 
         if mut_ref_to_state_or_none.is_some() {
             return mut_ref_to_state_or_none.unwrap()
@@ -543,7 +542,7 @@ impl StateRegister {
 
     /// Connect all the unconnected (`None`) out
     /// connections of a state to some state.
-    fn connect_dangling_outs_to_state(&mut self, state_id: u32, to_state: u32) {
+    fn connect_dangling_outs_to_state(&mut self, state_id: usize, to_state: usize) {
         let mut state = self.get_mut_state(state_id);
 
         state.out = state.out.iter().map(
@@ -558,44 +557,41 @@ impl StateRegister {
 
     /// Register a new state.
     /// Return the unique id of that state.
-    fn new_state(&mut self, state_type: StateType, out: Vec<Option<u32>>) -> u32 {
-        self.states.insert(
-            self.current_id,
-            State { state_type, out }
-        );
+    fn new_state(&mut self, state_type: StateType, out: Vec<Option<usize>>) -> usize {
+        self.states.push(State { state_type, out });
 
-        // Increment the current id, this ensured the id of each state is
-        // unique.
+        // Increment the current id so that the returned id from this function
+        // always corresponds to the postion of the state in `self.states`.
         self.current_id += 1;
         self.current_id - 1
     }
 
-    fn new_literal(&mut self, contains: char, out_state: Option<u32>) -> u32 {
+    fn new_literal(&mut self, contains: char, out_state: Option<usize>) -> usize {
         self.new_state(
             StateType::Literal(contains),
             vec![out_state]
         )
     }
 
-    fn new_dot(&mut self, out_state: Option<u32>) -> u32 {
+    fn new_dot(&mut self, out_state: Option<usize>) -> usize {
         self.new_state(StateType::Dot, vec![out_state])
     }
 
-    fn new_bracket(&mut self, contains: &str, out_state: Option<u32>) -> u32 {
+    fn new_bracket(&mut self, contains: &str, out_state: Option<usize>) -> usize {
         self.new_state(
             StateType::Bracket(String::from(contains)),
             vec![out_state]
         )
     }
 
-    fn new_split(&mut self, out_state_1: Option<u32>, out_state_2: Option<u32>) -> u32 {
+    fn new_split(&mut self, out_state_1: Option<usize>, out_state_2: Option<usize>) -> usize {
         self.new_state(
             StateType::Split,
             vec![out_state_1, out_state_2]
         )
     }
 
-    fn match_state(&mut self) -> u32 {
+    fn match_state(&mut self) -> usize {
         self.new_state(
             StateType::Match,
             vec![]
@@ -618,7 +614,7 @@ impl fmt::Display for State {
 impl Fragment {
     /// Attach all the unattached (`None`) outgoing lines of all the end states
     /// of the fragment to a given state.
-    fn connect_ends(&self, to_state: u32, register: &mut StateRegister) {
+    fn connect_ends(&self, to_state: usize, register: &mut StateRegister) {
         for end in &self.ends[..] {
             register.connect_dangling_outs_to_state(*end, to_state);
         }
@@ -629,7 +625,7 @@ impl Fragment {
 
 /// Operator precedence for regex operators. Higher value
 /// means higher precedence.
-fn precedence(regex_operator: char) -> u32 {
+fn precedence(regex_operator: char) -> usize {
     match regex_operator {
         '|' => 1,  // Alteration (or)
         '~' => 3,  // Concatenation (and)
@@ -675,7 +671,7 @@ fn pop_into_while<F>(from: &mut Vec<char>, to: &mut String, predicate: &F) where
 /// Insert the state id of a state into `into`, unless the state is a split.
 /// For a split follow the out arrows and call this function recursively on
 /// the states they point to.
-fn insert_or_follow_split(into: &mut HashSet<u32>, state: &State, state_id: u32, register: &StateRegister) {
+fn insert_or_follow_split(into: &mut HashSet<usize>, state: &State, state_id: usize, register: &StateRegister) {
     match state.state_type {
         StateType::Split => {
             for state_out_id_or_none in &state.out {
@@ -696,7 +692,7 @@ fn insert_or_follow_split(into: &mut HashSet<u32>, state: &State, state_id: u32,
 /// Traverse a NFA given by a start state and state register to which it
 /// belongs, printing the nodes as we go along.
 /// Only used for debugging the creation of the NFA.
-pub fn print_nfa(start_id: u32, register: &StateRegister, visited: &mut HashSet<u32>) {
+pub fn print_nfa(start_id: usize, register: &StateRegister, visited: &mut HashSet<usize>) {
     let start = register.get_state(start_id);
 
     // To avoid infinte recursion we need to remember the states we
