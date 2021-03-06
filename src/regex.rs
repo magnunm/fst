@@ -69,7 +69,506 @@ struct Fragment {
     ends: Vec<usize>
 }
 
-// Main algorithms
+// Main algorithm
+
+/// Convert a regular expression to a NFA.
+///
+/// Uses theShunting-Yard algorithm to convert a regex written in
+/// infix notation to a postifix regex. Then applies the Thompson
+/// construction to that postfix regex in order to convert it into a
+/// NFA. The two algorithms are combined so that this is done in a
+/// single loop over the regex characters. The end effect is a algorithm
+/// that converts a infix regex to a NFA. Also we don't have explicit
+/// concatenation characters in the infix notation, while a postfix
+/// notation would require it. This requires some extra logic to decide
+/// where the "would be" a concatenation character in the postifix notation.
+pub fn regex_to_nfa<'a>(regex: &'a str) -> NFA<'a> {
+    let mut register = StateRegister::new();
+    let mut fragment_stack: Vec<Fragment> = Vec::new();
+    let mut operator_stack: Vec<char> = Vec::new();
+    let mut previous_char: Option<char> = None;
+
+    // While iterating over the regex characters, handle a operator:
+    // If not a opening paren, pop all operators from the operator stack to the
+    // NFA that have higher precedence than the current operator.
+    // Push the current operator to the operator stack.
+    // Note that an operator here is not the same as a metacharacter.
+    // The former is a subset of the latter.
+    fn handle_current_char_is_operator(
+        current_char: char,
+        register: &mut StateRegister,
+        fragment_stack: &mut Vec<Fragment>,
+        operator_stack: &mut Vec<char>
+    ) {
+        // TODO: Remove
+        println!("Handle operator called on: {}", current_char);
+
+        let opening_bracket_on_operator_stack_top: bool =
+            operator_stack.last() == Some(&'(');
+
+        println!("Found opening bracket on op stack top: {}", opening_bracket_on_operator_stack_top);
+
+        if !opening_bracket_on_operator_stack_top {
+            while operator_stack.len() > 0 {
+                let do_pop_from_op_stack =
+                    precedence(*operator_stack.last().unwrap()) > precedence(current_char);
+
+                if do_pop_from_op_stack {
+                    match operator_stack.pop() {
+                        Some(op) => parse_operator_to_nfa(
+                            op,
+                            register,
+                            fragment_stack
+                        ),
+                        None => break
+                    }
+                }
+                else {
+                    break;
+                }
+            }
+        }
+
+        operator_stack.push(current_char);
+    };
+
+    // When a grouping is over, as signaled by a closing parentheis,
+    // pop the operator stack until we find the start of the grouping.
+    fn handle_current_char_is_closing_paren(
+        register: &mut StateRegister,
+        fragment_stack: &mut Vec<Fragment>,
+        operator_stack: &mut Vec<char>
+    ) {
+        loop {
+            if operator_stack.len() == 0 {
+                panic!("Unmatched parentheis: Could not find opening parenthesis.");
+            }
+
+            let operator_at_top = operator_stack.last().unwrap();
+            if *operator_at_top == '(' {
+                break;
+            }
+
+            match operator_stack.pop() {
+                Some(op) => parse_operator_to_nfa(
+                    op,
+                    register,
+                    fragment_stack
+                ),
+                None => break
+            }
+        }
+        operator_stack.pop(); // Discard both parentheses
+    }
+
+    let mut regex_char_indices = regex.char_indices();
+
+    loop {
+        if let Some((char_byte_index, character)) = regex_char_indices.next() {
+            // For debugging
+            // TODO: Remove
+            println!("Current char: {}", character);
+            println!("Current operator stack: {:?}", operator_stack);
+
+            // Determine if the current character should be concatenated with the
+            // previous. If so we temporarily act as if we were looking at a
+            // concatenation character (~). Since in infix notation this
+            // operator would be between the two characters this logic needs
+            // to go first.
+            let mut concatenate_previous: bool = false;
+
+            if previous_char.is_some() {
+                // Don't concatenate if current character is an operator or a
+                // closing bracket.
+                // Don't concatenate is the previous character was a alteration or
+                // a opening bracket.
+                concatenate_previous = !(
+                    ['*', '+', '?', '|', ')'].contains(&character) ||
+                        ['|', '('].contains(&previous_char.unwrap())
+                );
+            }
+
+            if concatenate_previous {
+                // Pretend we are looking at a concatenation character (~)
+                // instead of the currenet character.
+                handle_current_char_is_operator(
+                    '~',
+                    &mut register,
+                    &mut fragment_stack,
+                    &mut operator_stack
+                );
+            }
+
+            // The escape character. Treat the next character as literal no
+            // matter what.
+            if character == '\\' {
+                if let Some((_, next_character)) = regex_char_indices.next() {
+                    parse_literal_to_nfa(
+                        next_character,
+                        &mut register,
+                        &mut fragment_stack
+                    );
+                }
+                else {
+                    panic!("Regex cannot end in a escape");
+                }
+
+                // To handle concatenation correctly on the next iteration the
+                // previous character must be recongized as a literal char.
+                // The actual value does not matter.
+                previous_char = Some('a');
+                continue;
+            }
+
+            // A bracket character class.
+            // The NFA state stores here the expression inside the bracket.
+            // To avoid allocation it stores a slice into to the regex.
+            // This means wee need the character byte index where the
+            // bracket ends.
+            if character == '[' {
+                let end_bracket_char_byte_index;
+
+                loop {
+                    match regex_char_indices.next() {
+                        Some((i, ']')) => {
+                            end_bracket_char_byte_index = i;
+                            break;
+                        },
+                        Some(_) => (),
+                        None => panic!("End of regex before end of bracket")
+                    }
+                }
+
+                parse_bracket_character_class_to_nfa(
+                    &mut register,
+                    &mut fragment_stack,
+                    &regex[char_byte_index..end_bracket_char_byte_index]
+                );
+
+                previous_char = Some(']');
+                continue;
+            }
+
+            // Handle the current character
+            match character {
+                // Operators. Exluding concatenation which is not treated as
+                // an operator in the infix notation so should match a literal
+                // character here.
+                '*' | '+' | '?' | '|' => {
+                    handle_current_char_is_operator(
+                        character,
+                        &mut register,
+                        &mut fragment_stack,
+                        &mut operator_stack
+                    );
+                },
+                // Parentheses: grouping
+                '(' => {
+                    operator_stack.push('(');
+                },
+                ')' => {
+                    handle_current_char_is_closing_paren(
+                        &mut register,
+                        &mut fragment_stack,
+                        &mut operator_stack
+                    )
+                }
+                // The dot character class
+                '.' => {
+                    parse_dot_character_class_to_nfa(
+                        &mut register,
+                        &mut fragment_stack
+                    );
+                },
+                // Default: Literal character
+                _ => {
+                    parse_literal_to_nfa(
+                        character,
+                        &mut register,
+                        &mut fragment_stack
+                    );
+                }
+            }
+
+            // Set the previous character
+            previous_char = Some(character);
+        }
+        else {
+            break;
+        }
+    }
+
+    // If there are any operators left on the operator stack after the loop
+    // they should be popped and parsed.
+    loop {
+        match operator_stack.pop() {
+            Some('(') => {
+                // A parenthesis left in the operator stack is not possible after
+                // looping over all characters unless it was unmatched.
+                panic!("Unmatched parentheis: Could not find closing parenthesis.");
+            },
+            Some(operator) => parse_operator_to_nfa(
+                operator,
+                &mut register,
+                &mut fragment_stack
+            ),
+            None => break
+        }
+    }
+
+    // After parsing all regex characters there should be only one
+    // fragment left in the stack for a valid regex. Letting all the
+    // ends of that fragment point to a matching state completes the
+    // construction of the NFA. Returning the starting state the NFA
+    // can be traversed following the out id's.
+    let final_fragment_or_none = fragment_stack.pop();
+
+    if fragment_stack.len() > 0 {
+        // More than one fragment left means the passed postifx regex
+        // was ill formed.
+        panic!("Invalid postfix regex. More than one final fragment in construction.");
+    }
+
+    if final_fragment_or_none.is_some() {
+        let final_fragment = final_fragment_or_none.unwrap();
+        let match_state = register.match_state();
+        final_fragment.connect_ends(match_state, &mut register);
+
+        return NFA {
+            state_register: register,
+            start_state: final_fragment.start
+        };
+    }
+
+    panic!("Unexpected empty stack after loop end!")
+}
+
+/// Create a NFA fragment given `fragment_stack` and a regex operator
+///
+/// Part of the `regex_to_nfa` algorithm.  Given the NFA states
+/// already in the fragment stack and the character we are currently
+/// looking at is a operator, create a new NFA fragment and push
+/// it to the stack.
+/// Note that operator here is not the same as "metacharacter", which
+/// is a broader class.
+fn parse_operator_to_nfa(
+    operator: char,
+    register: &mut StateRegister,
+    fragment_stack: &mut Vec<Fragment>
+) {
+    match operator {
+        // Alteration (or)
+        '|' => {
+            parse_alteration_operator_to_nfa(register, fragment_stack);
+        },
+        // Concatenation (and)
+        '~' => {
+            parse_concatenation_operator_to_nfa(register, fragment_stack);
+        },
+        // Zero or more
+        '*' => {
+            parse_zero_or_more_operator_to_nfa(register, fragment_stack);
+        },
+        // One or more
+        '+' => {
+            parse_one_or_more_operator_to_nfa(register, fragment_stack);
+        },
+        // Zero or one
+        '?' => {
+            parse_zero_or_one_operator_to_nfa(register, fragment_stack);
+        },
+        _ => {
+            panic!("Invalid regex operator found in operator stack.")
+        }
+    }
+}
+
+/// Create a NFA fragment given `fragment_stack` and a literal char.
+///
+/// Part of the `regex_to_nfa` algorithm.  Given the NFA states
+/// already in the fragment stack and the character we are currently
+/// looking at is a literal char, create a new NFA fragment and push
+/// it to the stack.
+fn parse_literal_to_nfa(
+    current_char: char,
+    register: &mut StateRegister,
+    fragment_stack: &mut Vec<Fragment>
+) {
+    let literal = register.new_literal(current_char, None);
+
+    let single_literal_fragment = Fragment {
+        start: literal,
+        ends: vec![literal]
+    };
+    fragment_stack.push(single_literal_fragment);
+}
+
+/// Create a NFA fragment given `fragment_stack` and a concatenation.
+///
+/// Part of the `regex_to_nfa` algorithm.  Given the NFA states
+/// already in the fragment stack and the character we are currently
+/// looking at is a concatenation, create a new NFA fragment and push
+/// it to the stack.
+fn parse_concatenation_operator_to_nfa(
+    register: &mut StateRegister,
+    fragment_stack: &mut Vec<Fragment>
+) {
+    // Connect the ends of fragment_1 to the start of fragment_2
+    let fragment_2 = pop_or_panic(fragment_stack, None);
+    let fragment_1 = pop_or_panic(fragment_stack, None);
+
+    fragment_1.connect_ends(fragment_2.start, register);
+
+    // Fuse the two fragments together to a single fragment,
+    // and push that to the stack
+    let fused_fragment = Fragment {
+        start: fragment_1.start,
+        ends: fragment_2.ends
+    };
+    fragment_stack.push(fused_fragment);
+}
+
+/// Create a NFA fragment given `fragment_stack` and a alteration.
+///
+/// Part of the `regex_to_nfa` algorithm.  Given the NFA states
+/// already in the fragment stack and the character we are currently
+/// looking at is a alteration, create a new NFA fragment and push it
+/// to the stack.
+fn parse_alteration_operator_to_nfa(
+    register: &mut StateRegister,
+    fragment_stack: &mut Vec<Fragment>
+) {
+    let fragment_2 = pop_or_panic(fragment_stack, None);
+    let fragment_1 = pop_or_panic(fragment_stack, None);
+
+    // Create a new split state which has the start states of the
+    // two fragments as the two choices.
+    let split = register.new_split(
+        Some(fragment_1.start),
+        Some(fragment_2.start)
+    );
+
+    // Collect this into a new fragment with the split state as
+    // the start state and with the union of the ends of the two
+    // fragments as the new vector of ends.
+    let split_fragment = Fragment {
+        start: split,
+        ends: [&fragment_1.ends[..], &fragment_2.ends[..]].concat()
+    };
+    fragment_stack.push(split_fragment);
+}
+
+/// Create a NFA fragment given `fragment_stack` and a "?"
+///
+/// Part of the `regex_to_nfa` algorithm.  Given the NFA states
+/// already in the fragment stack and the character we are currently
+/// looking at is a "?", create a new NFA fragment and push it to the
+/// stack.
+fn parse_zero_or_one_operator_to_nfa (
+    register: &mut StateRegister,
+    fragment_stack: &mut Vec<Fragment>
+) {
+    let fragment = pop_or_panic(fragment_stack, None);
+    let split_state = register.new_split(Some(fragment.start), None);
+
+    let zero_or_one_fragment = Fragment {
+        start: split_state,
+        ends: [&fragment.ends[..], &[split_state]].concat()
+    };
+
+    fragment_stack.push(zero_or_one_fragment);
+}
+
+/// Create a NFA fragment given `fragment_stack` and a "*".
+///
+/// Part of the `regex_to_nfa` algorithm.  Given the NFA states
+/// already in the fragment stack and the character we are currently
+/// looking at is a "*", create a new NFA fragment and push it to the
+/// stack.
+fn parse_zero_or_more_operator_to_nfa(
+    register: &mut StateRegister,
+    fragment_stack: &mut Vec<Fragment>
+) {
+    let fragment = pop_or_panic(fragment_stack, None);
+    let split_state = register.new_split(Some(fragment.start), None);
+
+    fragment.connect_ends(split_state, register);
+
+    let zero_or_more_fragment = Fragment {
+        start: split_state,
+        ends: vec![split_state]
+    };
+
+    fragment_stack.push(zero_or_more_fragment);
+}
+
+/// Create a NFA fragment given `fragment_stack` and a "+".
+///
+/// Part of the `regex_to_nfa` algorithm.  Given the NFA states
+/// already in the fragment stack and the character we are currently
+/// looking at is a "+", create a new NFA fragment and push it to the
+/// stack.
+fn parse_one_or_more_operator_to_nfa(
+    register: &mut StateRegister,
+    fragment_stack: &mut Vec<Fragment>
+) {
+    let fragment = pop_or_panic(fragment_stack, None);
+    let split_state = register.new_split(Some(fragment.start), None);
+
+    fragment.connect_ends(split_state, register);
+
+    let one_or_more_fragment = Fragment {
+        start: fragment.start,
+        ends: vec![split_state]
+    };
+
+    fragment_stack.push(one_or_more_fragment);
+}
+
+/// Create a NFA fragment given `fragment_stack` and a dot.
+///
+/// Part of the `regex_to_nfa` algorithm.  Given the NFA states
+/// already in the fragment stack and the character we are currently
+/// looking at is a dot character class, create a new NFA fragment and
+/// push it to the stack.
+fn parse_dot_character_class_to_nfa(
+    register: &mut StateRegister,
+    fragment_stack: &mut Vec<Fragment>
+) {
+    let dot = register.new_dot(None);
+
+    let single_dot_fragment = Fragment {
+        start: dot,
+        ends: vec![dot]
+    };
+    fragment_stack.push(single_dot_fragment);
+}
+
+/// Create a NFA fragment given `fragment_stack` and a bracket.
+///
+/// Part of the `regex_to_nfa` algorithm.  Given the NFA states
+/// already in the fragment stack and the character we are currently
+/// looking at is the start of a bracket character class, create a new
+/// NFA fragment and push it to the stack.
+fn parse_bracket_character_class_to_nfa<'a>(
+    register: &mut StateRegister<'a>,
+    fragment_stack: &mut Vec<Fragment>,
+    bracketed_expression: &'a str
+) {
+    let bracket = register.new_bracket(
+        bracketed_expression,
+        None
+    );
+
+    let single_bracket_fragment = Fragment {
+        start: bracket,
+        ends: vec![bracket]
+    };
+    fragment_stack.push(single_bracket_fragment);
+
+}
+
+
 
 /// Use the Shunting-Yard algorithm to convert a regex written in
 /// infix notation to a postifix regex.
@@ -822,8 +1321,7 @@ mod tests {
     fn test_regex_nfa_matching_1() {
         // Test alteration, unicode, concatenation
         let regex: &str = "(a|⻘)c";
-        let postfix_regex: String = regex_infix_to_postfix(regex);
-        let nfa = postfix_regex_to_nfa(&postfix_regex);
+        let nfa = regex_to_nfa(regex);
 
         assert_eq!(nfa.simulate("ac", false), 2);
         assert_eq!(nfa.simulate("⻘c", false), "⻘c".len());
@@ -836,8 +1334,7 @@ mod tests {
     fn test_regex_nfa_matching_2() {
         // Test one or more, zero or more
         let regex: &str = "(a|b)*c+";
-        let postfix_regex: String = regex_infix_to_postfix(regex);
-        let nfa = postfix_regex_to_nfa(&postfix_regex);
+        let nfa = regex_to_nfa(regex);
 
         assert_eq!(nfa.simulate("ac", false), 2);
         assert_eq!(nfa.simulate("c", false), 1);
@@ -853,8 +1350,7 @@ mod tests {
     fn test_regex_nfa_matching_3() {
         // Test character classes
         let regex: &str = ".*a[0-9]+";  // Any string that ends in `a` + number
-        let postfix_regex: String = regex_infix_to_postfix(regex);
-        let nfa = postfix_regex_to_nfa(&postfix_regex);
+        let nfa = regex_to_nfa(regex);
 
         assert_eq!(nfa.simulate("a2021", true), 5);
         assert_eq!(nfa.simulate("åa9", true), "åa9".len());
@@ -868,8 +1364,7 @@ mod tests {
     fn test_regex_nfa_matching_4() {
         // Test escaping
         let regex: &str = "(\\.\\*)+";  // One or more literal .*
-        let postfix_regex: String = regex_infix_to_postfix(regex);
-        let nfa = postfix_regex_to_nfa(&postfix_regex);
+        let nfa = regex_to_nfa(regex);
 
         assert_eq!(nfa.simulate(".*.*.*.*", true), 8);
         assert_eq!(nfa.simulate(".*.*.*.*", false), 2);
@@ -881,10 +1376,10 @@ mod tests {
     }
 
     #[test]
-    fn test_postfix_regex_nfa_matching_1() {
+    fn test_regex_nfa_matching_5() {
         // Test or and concatenation
-        let postfix_regex: &str = "abc|~";
-        let nfa = postfix_regex_to_nfa(&postfix_regex);
+        let regex: &str = "a(b|c)";
+        let nfa = regex_to_nfa(regex);
 
         assert_eq!(nfa.simulate("ab", false), 2);
         assert_eq!(nfa.simulate("ac", false), 2);
@@ -895,11 +1390,11 @@ mod tests {
     }
 
     #[test]
-    fn test_postfix_regex_nfa_matching_2() {
+    fn test_regex_nfa_matching_6() {
         // Test zero or more, one or more, zero or one
         // Test unicode support
-        let postfix_regex: &str = "a*ø?~⻘+~";
-        let nfa = postfix_regex_to_nfa(&postfix_regex);
+        let regex: &str = "a*ø?⻘+";
+        let nfa = regex_to_nfa(regex);
 
         assert_eq!(nfa.simulate("a⻘", false), "a⻘".len());
         assert_eq!(nfa.simulate("aø⻘", false), "aø⻘".len());
