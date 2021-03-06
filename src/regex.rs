@@ -677,20 +677,18 @@ fn pop_into_while<F>(from: &mut Vec<char>, to: &mut String, predicate: &F) where
 /// For a split follow the out arrows and call this function recursively on
 /// the states they point to.
 fn insert_or_follow_split(into: &mut HashSet<usize>, state: &State, state_id: usize, register: &StateRegister) {
-    match state.state_type {
-        StateType::Split => {
-            for state_out_id_or_none in &state.out {
-                let state_out_id = state_out_id_or_none.unwrap();
-                let state_out: &State = register.get_state(state_out_id);
+    if let StateType::Split = state.state_type {
+        // `flat_map` to filter out `None` arrows
+        for state_out_id in state.out.iter().flat_map(|id| *id) {
+            let state_out: &State = register.get_state(state_out_id);
 
-                insert_or_follow_split(
-                    into, state_out, state_out_id, register
-                );
-            }
-        },
-        _ => {
-            into.insert(state_id);
+            insert_or_follow_split(
+                into, state_out, state_out_id, register
+            );
         }
+    }
+    else {
+        into.insert(state_id);
     }
 }
 
@@ -709,16 +707,14 @@ pub fn print_nfa(start_id: usize, register: &StateRegister, visited: &mut HashSe
 
     visited.insert(start_id);
 
-    match start.state_type {
-        StateType::Match => {
-            println!("{}", start);
-        },
-        _ => {
-            println!("{}", start);
-            for out_state_id in &start.out[..] {
-                if out_state_id.is_some() {
-                    print_nfa(out_state_id.unwrap(), register, visited);
-                }
+    if let StateType::Match = start.state_type {
+        println!("{}", start);
+    }
+    else {
+        println!("{}", start);
+        for out_state_id in &start.out[..] {
+            if out_state_id.is_some() {
+                print_nfa(out_state_id.unwrap(), register, visited);
             }
         }
     }
@@ -730,10 +726,10 @@ fn pop_or_panic<T>(vector: &mut Vec<T>, panic_message: Option<&'static str>) -> 
     if result.is_some() {
         return result.unwrap();
     }
-    match panic_message {
-        Some(message) => panic!(message),
-        _ => panic!("Attempted pop of empty vector.")
+    if let Some(message) = panic_message {
+        panic!(message);
     }
+    panic!("Attempted pop of empty vector.");
 }
 
 /// Check if a character mathces a regex bracket expression.
