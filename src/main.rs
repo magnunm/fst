@@ -5,8 +5,7 @@ mod regex;
 
 
 fn main() -> io::Result<()> {
-    // A possible email regex
-    let regex: &str = "[a-zA-Z0-9]+@[a-zA-Z0-9]+\\.[a-zA-Z0-9]+";
+    let regex: &str = "(a|⻘)c";
     let postfix_regex: String = regex::regex_infix_to_postfix(regex);
     let nfa = regex::postfix_regex_to_nfa(&postfix_regex);
 
@@ -16,14 +15,9 @@ fn main() -> io::Result<()> {
     let mut input = stdin.lock().lines().next().unwrap().unwrap();
 
     while input != "q" {
-        let is_match = nfa.simulate(&input);
+        let match_greedy = nfa.simulate(&input, false);
 
-        if is_match {
-            println!("Match!");
-        }
-        else {
-            println!("No match!");
-        }
+        println!("Got index: {}", match_greedy);
 
         input = stdin.lock().lines().next().unwrap().unwrap();
     }

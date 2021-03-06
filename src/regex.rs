@@ -428,8 +428,16 @@ pub fn postfix_regex_to_nfa<'a>(postfix_regex: &'a str) -> NFA<'a> {
 
 impl<'a> NFA<'a> {
     /// Run the NFA with a given input string.
+    ///
     /// The simulation can be in multiple NFA states at the same time.
-    pub fn simulate(&self, input: &str) -> bool {
+    /// Returns the character byte index of the first character after the
+    /// string that matches the pattern. A return value of 0 means there
+    /// was no match at all.
+    /// `greedy` controls wether or not we will match the regex greedily or
+    /// not. If true the returned byte index will be the first character after
+    /// the longest matching substring in `input`, if `false` it will be the
+    /// index after the shortest matching substring in `input`.
+    pub fn simulate(&self, input: &str, greedy: bool) -> usize {
         let register: &StateRegister = &self.state_register;
 
         // Current states the NFA is in.
@@ -444,6 +452,10 @@ impl<'a> NFA<'a> {
 
         // States the NFA will be in after the current character
         let mut next: HashSet<usize> = HashSet::new();
+
+        // Char byte index of the character after the longest matching
+        // substring found this far.
+        let mut largest_matching_char_index: usize = 0;
 
         // Follow the first out arrow of a state and insert the state
         // at the end of it into the next states.
@@ -462,7 +474,7 @@ impl<'a> NFA<'a> {
             );
         };
 
-        for character in input.chars() {
+        for (byte_index, character) in input.char_indices() {
             // Use the current states to compute the next states given the
             // character in the input string
             for state_id in current.iter() {
@@ -470,9 +482,19 @@ impl<'a> NFA<'a> {
 
                 match &state.state_type {
                     StateType::Match => {
-                        // Already in the match state. No need to iterate further
-                        // as this means we have a match.
-                        return true;
+                        // Already in the match state.
+                        // If we are matching greedily we should store the
+                        // char index as the largest found yet and continue to
+                        // iterate the input chars.
+                        // If not matching greedily we don't need to iterate
+                        // further, as this is already the shortest matching
+                        // substring.
+                        if greedy {
+                            largest_matching_char_index = byte_index;
+                        }
+                        else {
+                            return byte_index;
+                        }
                     },
                     // Literal: follow out if current matches literal's char
                     StateType::Literal(c) => {
@@ -500,6 +522,14 @@ impl<'a> NFA<'a> {
                 }
             }
 
+            // If `next` is empty there is no need to continue iterating
+            // over the characters. If matching greedily we might have
+            // encountered a already, so we should return the index of
+            // that. If not this return will correctly by zero.
+            if next.is_empty() {
+                return largest_matching_char_index;
+            }
+
             // Next becomes the new current, and the new next is initialized.
             mem::swap(&mut current, &mut next);
             next.clear();
@@ -507,13 +537,19 @@ impl<'a> NFA<'a> {
 
         // If the current states contain the match state after all characters
         // are iterated over then we have a match.
+        // Matching greedily this means we match the entire string, so return
+        // the byte lenght of the string. Getting here not matching greedily
+        // means we only now have a match, so the output is the same.
         for state in current {
             match register.get_state(state).state_type {
-                StateType::Match => { return true; },
+                StateType::Match => { return input.len(); },
                 _ => ()
             }
         }
-        return false;
+        // If not we might still have encountered a match earlier if we were
+        // matching greedily. Not matching greedily this will correctly return
+        // zero.
+        return largest_matching_char_index;
     }
 }
 
@@ -789,11 +825,11 @@ mod tests {
         let postfix_regex: String = regex_infix_to_postfix(regex);
         let nfa = postfix_regex_to_nfa(&postfix_regex);
 
-        assert!(nfa.simulate("ac"));
-        assert!(nfa.simulate("⻘c"));
-        assert!(!nfa.simulate("a"));  // Missing c
-        assert!(!nfa.simulate("c"));  // Missing first char
-        assert!(!nfa.simulate("xc"));  // Wrong first char
+        assert_eq!(nfa.simulate("ac", false), 2);
+        assert_eq!(nfa.simulate("⻘c", false), "⻘c".len());
+        assert_eq!(nfa.simulate("a", false), 0);  // Missing c
+        assert_eq!(nfa.simulate("c", false), 0);  // Missing first char
+        assert_eq!(nfa.simulate("xc", false), 0);  // Wrong first char
     }
 
     #[test]
@@ -803,14 +839,14 @@ mod tests {
         let postfix_regex: String = regex_infix_to_postfix(regex);
         let nfa = postfix_regex_to_nfa(&postfix_regex);
 
-        assert!(nfa.simulate("ac"));
-        assert!(nfa.simulate("c"));
-        assert!(nfa.simulate("aaaac"));
-        assert!(nfa.simulate("accccc"));
-        assert!(nfa.simulate("bc"));
-        assert!(nfa.simulate("abc"));  // Both characters allowed in zero or more
-        assert!(!nfa.simulate("b"));  // Too few c
-        assert!(!nfa.simulate(""));  // Too few c
+        assert_eq!(nfa.simulate("ac", false), 2);
+        assert_eq!(nfa.simulate("c", false), 1);
+        assert_eq!(nfa.simulate("aaaac", false), 5);
+        assert_eq!(nfa.simulate("accccc", false), 2);  // 2 not greedy
+        assert_eq!(nfa.simulate("bc", false), 2);
+        assert_eq!(nfa.simulate("abc", false), 3);  // Both characters allowed in zero or more
+        assert_eq!(nfa.simulate("b", false), 0);  // Too few c
+        assert_eq!(nfa.simulate("", false), 0);  // Too few c
     }
 
     #[test]
@@ -820,12 +856,12 @@ mod tests {
         let postfix_regex: String = regex_infix_to_postfix(regex);
         let nfa = postfix_regex_to_nfa(&postfix_regex);
 
-        assert!(nfa.simulate("a2021"));
-        assert!(nfa.simulate("åa9"));
-        assert!(nfa.simulate("教育漢字a0"));
-        assert!(!nfa.simulate("b"));
-        assert!(!nfa.simulate("a"));
-        assert!(!nfa.simulate("aO"));
+        assert_eq!(nfa.simulate("a2021", true), 5);
+        assert_eq!(nfa.simulate("åa9", true), "åa9".len());
+        assert_eq!(nfa.simulate("教育漢字a0", true), "教育漢字a0".len());
+        assert_eq!(nfa.simulate("b", true), 0);
+        assert_eq!(nfa.simulate("a", true), 0);
+        assert_eq!(nfa.simulate("aO", true), 0);
     }
 
     #[test]
@@ -835,12 +871,13 @@ mod tests {
         let postfix_regex: String = regex_infix_to_postfix(regex);
         let nfa = postfix_regex_to_nfa(&postfix_regex);
 
-        assert!(nfa.simulate(".*.*.*.*"));
-        assert!(nfa.simulate(".*"));
-        assert!(!nfa.simulate("."));
-        assert!(!nfa.simulate("a"));
-        assert!(!nfa.simulate("\\.\\*"));
-        assert!(!nfa.simulate("\\."));
+        assert_eq!(nfa.simulate(".*.*.*.*", true), 8);
+        assert_eq!(nfa.simulate(".*.*.*.*", false), 2);
+        assert_eq!(nfa.simulate(".*", false), 2);
+        assert_eq!(nfa.simulate(".", false), 0);
+        assert_eq!(nfa.simulate("a", false), 0);
+        assert_eq!(nfa.simulate("\\.\\*", false), 0);
+        assert_eq!(nfa.simulate("\\.", false), 0);
     }
 
     #[test]
@@ -849,12 +886,12 @@ mod tests {
         let postfix_regex: &str = "abc|~";
         let nfa = postfix_regex_to_nfa(&postfix_regex);
 
-        assert!(nfa.simulate("ab"));
-        assert!(nfa.simulate("ac"));
-        assert!(nfa.simulate("abx"));
-        assert!(!nfa.simulate("a"));
-        assert!(!nfa.simulate("aa"));
-        assert!(!nfa.simulate(""));
+        assert_eq!(nfa.simulate("ab", false), 2);
+        assert_eq!(nfa.simulate("ac", false), 2);
+        assert_eq!(nfa.simulate("abx", false), 2);
+        assert_eq!(nfa.simulate("a", false), 0);
+        assert_eq!(nfa.simulate("aa", false), 0);
+        assert_eq!(nfa.simulate("", false), 0);
     }
 
     #[test]
@@ -864,13 +901,13 @@ mod tests {
         let postfix_regex: &str = "a*ø?~⻘+~";
         let nfa = postfix_regex_to_nfa(&postfix_regex);
 
-        assert!(nfa.simulate("a⻘"));
-        assert!(nfa.simulate("aø⻘"));
-        assert!(nfa.simulate("⻘"));
-        assert!(nfa.simulate("ø⻘"));
-        assert!(nfa.simulate("aaaaaaaaaaaa⻘⻘⻘⻘⻘⻘"));
-        assert!(!nfa.simulate("aøø⻘"));  // Too many ø
-        assert!(!nfa.simulate("aø"));  // Too few ⻘
+        assert_eq!(nfa.simulate("a⻘", false), "a⻘".len());
+        assert_eq!(nfa.simulate("aø⻘", false), "aø⻘".len());
+        assert_eq!(nfa.simulate("⻘", false), "⻘".len());
+        assert_eq!(nfa.simulate("ø⻘", false), "ø⻘".len());
+        assert_eq!(nfa.simulate("aaaaaaaaaaaa⻘⻘⻘⻘⻘⻘", false), "aaaaaaaaaaaa⻘".len());
+        assert_eq!(nfa.simulate("aøø⻘", false), 0);  // Too many ø
+        assert_eq!(nfa.simulate("aø", false), 0);  // Too few ⻘
     }
 
     #[test]
