@@ -115,13 +115,8 @@ pub fn regex_to_nfa<'a>(regex: &'a str) -> NFA<'a> {
         fragment_stack: &mut Vec<Fragment>,
         operator_stack: &mut Vec<char>
     ) {
-        // TODO: Remove
-        println!("Handle operator called on: {}", current_char);
-
         let opening_bracket_on_operator_stack_top: bool =
             operator_stack.last() == Some(&'(');
-
-        println!("Found opening bracket on op stack top: {}", opening_bracket_on_operator_stack_top);
 
         if !opening_bracket_on_operator_stack_top {
             while operator_stack.len() > 0 {
@@ -180,11 +175,6 @@ pub fn regex_to_nfa<'a>(regex: &'a str) -> NFA<'a> {
 
     loop {
         if let Some((char_byte_index, character)) = regex_char_indices.next() {
-            // For debugging
-            // TODO: Remove
-            println!("Current char: {}", character);
-            println!("Current operator stack: {:?}", operator_stack);
-
             // Determine if the current character should be concatenated with the
             // previous. If so we temporarily act as if we were looking at a
             // concatenation character (~). Since in infix notation this
