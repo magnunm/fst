@@ -1,5 +1,6 @@
-/// Convert a regular expression to a NFA (non-deterministic finite
-/// automaton).
+/// Regular expressions string matching by converting the regular expression to
+/// a NFA (non-deterministic finite automaton).
+///
 /// Works by first converting the regular expression to postfix notation and
 /// then applying Thompson's construction to that expression.
 /// The NFA is represented by states in a state register, to simulate the
@@ -12,6 +13,20 @@ use std::collections::HashSet;
 use std::mem;
 
 // Types
+
+/// A regular expression string, and functions to match a string to it.
+pub struct Regex<'a> {
+    pub regex: String,
+
+    // The NFA constructed from the regex and used internally for matching.
+    nfa: NFA<'a>,
+    // Wether or not the regex started with a caret (^) and/or ends with a
+    // dollar ($).
+    from_start: bool,
+    until_end: bool,
+    // Greedy mathcing
+    greedy: bool,
+}
 
 /// A state in a NFA (non-deterministic finite automaton).
 pub struct State<'a> {
@@ -925,6 +940,79 @@ pub fn postfix_regex_to_nfa<'a>(postfix_regex: &'a str) -> NFA<'a> {
 
 // Implementations
 
+impl<'a> Regex<'a> {
+    /// Create a new regex object given the regex string.
+    ///
+    /// This will construct the NFA needed to do the matching against the
+    /// regex string.
+    pub fn new(regex: &str, greedy: bool) -> Regex {
+        let starts_with_caret = regex.chars().next() == Some('^');
+        let ends_with_dollar = regex.chars().rev().next() == Some('$');
+
+        // The NFA regex matching does not implemet the caret or dollar,
+        // so they are removed from the postifx regex used to construct the NFA.
+        let mut start_index_nfa_regex: usize = 0;
+        let mut end_index_nfa_regex: usize = regex.len();
+        if starts_with_caret {
+            start_index_nfa_regex = 1;
+        }
+        if ends_with_dollar {
+            end_index_nfa_regex -= 1;
+        }
+
+        let nfa_regex = &regex[start_index_nfa_regex..end_index_nfa_regex];
+
+        // TODO: Error handling with bad regex!
+        Regex {
+            regex: String::from(regex),
+            nfa: regex_to_nfa(nfa_regex),
+            from_start: starts_with_caret,
+            until_end: ends_with_dollar,
+            greedy
+        }
+    }
+
+    /// Match the regex to a substring of `input`
+    ///
+    /// This function handles the caret (^) and dollar ($) meta character
+    /// functionality. If caret is set it will only match a substring starting
+    /// from the beginning of the input. If not it will check all possible
+    /// start positions as a possible match start. If dollar is set it will
+    /// require that the end of the substring match is the end of the input.
+    /// The matching once a start position is chosen is handled by the
+    /// NFA created from the regex string, excluding caret and dollar.
+    /// `greedy` controls wether or not we match greedily.
+    /// Returns the char byte index of the char where the matching substring
+    /// starts and the first char after it.
+    pub fn match_substring(&self, input: &str) -> (usize, usize) {
+        for (byte_index, _) in input.char_indices() {
+            let input_substring = &input[byte_index..];
+
+            let byte_index_for_match_end = self.nfa.simulate(
+                input_substring,
+                self.greedy
+            );
+
+            if byte_index_for_match_end > 0 {
+                // Guaranteed match unless regex should match until end,
+                // in which case we need to check that the end has been
+                // reached.
+                if !self.until_end || byte_index_for_match_end == input_substring.len() {
+                    return (byte_index, byte_index + byte_index_for_match_end);
+                }
+            }
+
+            if byte_index == 0 && self.from_start {
+                // If we should only match from the start we should not
+                // iterate over all the match start positions.
+                return (0, 0);
+            }
+        }
+
+        return (0, 0);
+    }
+}
+
 impl<'a> NFA<'a> {
     /// Run the NFA with a given input string.
     ///
@@ -1316,6 +1404,23 @@ fn char_in_range(character: char, range_start: char, range_end: char) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_regex_substring_matching() {
+        // Any string that ends in `a` + number or is any ordered selection
+        // from the characters 教育漢字 but nothing more.
+        let regex = Regex::new("^.*a[0-9]+|教?育?漢?字?$", true);
+
+        assert_eq!(regex.match_substring("lorem ipsum a2021"),
+                   (0, "lorem ipsum a2021".len()));
+        assert_eq!(regex.match_substring("a2021"),
+                   (0, "a2021".len()));
+        assert_eq!(regex.match_substring("教漢"),
+                   (0, "教漢".len()));
+        assert_eq!(regex.match_substring("abc"),
+                   (0, 0));
+    }
+
 
     #[test]
     fn test_regex_nfa_matching_1() {
