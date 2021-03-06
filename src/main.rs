@@ -1,5 +1,4 @@
 use std::io::{self, BufRead};
-use std::collections::HashSet;
 
 mod regex;
 
