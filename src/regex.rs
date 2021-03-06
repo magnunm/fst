@@ -12,7 +12,7 @@ use std::fmt;
 use std::collections::HashSet;
 use std::mem;
 
-// Types
+// Public types and implementations
 
 /// A regular expression string, and functions to match a string to it.
 pub struct Regex<'a> {
@@ -28,8 +28,83 @@ pub struct Regex<'a> {
     greedy: bool,
 }
 
+impl<'a> Regex<'a> {
+    /// Create a new regex object given the regex string.
+    ///
+    /// This will construct the NFA needed to do the matching against the
+    /// regex string.
+    pub fn new(regex: &str, greedy: bool) -> Regex {
+        let starts_with_caret = regex.chars().next() == Some('^');
+        let ends_with_dollar = regex.chars().rev().next() == Some('$');
+
+        // The NFA regex matching does not implemet the caret or dollar,
+        // so they are removed from the postifx regex used to construct the NFA.
+        let mut start_index_nfa_regex: usize = 0;
+        let mut end_index_nfa_regex: usize = regex.len();
+        if starts_with_caret {
+            start_index_nfa_regex = 1;
+        }
+        if ends_with_dollar {
+            end_index_nfa_regex -= 1;
+        }
+
+        let nfa_regex = &regex[start_index_nfa_regex..end_index_nfa_regex];
+
+        // TODO: Error handling with bad regex!
+        Regex {
+            regex: String::from(regex),
+            nfa: regex_to_nfa(nfa_regex),
+            from_start: starts_with_caret,
+            until_end: ends_with_dollar,
+            greedy
+        }
+    }
+
+    /// Match the regex to a substring of `input`
+    ///
+    /// This function handles the caret (^) and dollar ($) meta character
+    /// functionality. If caret is set it will only match a substring starting
+    /// from the beginning of the input. If not it will check all possible
+    /// start positions as a possible match start. If dollar is set it will
+    /// require that the end of the substring match is the end of the input.
+    /// The matching once a start position is chosen is handled by the
+    /// NFA created from the regex string, excluding caret and dollar.
+    /// `greedy` controls wether or not we match greedily.
+    /// Returns the char byte index of the char where the matching substring
+    /// starts and the first char after it.
+    pub fn match_substring(&self, input: &str) -> (usize, usize) {
+        for (byte_index, _) in input.char_indices() {
+            let input_substring = &input[byte_index..];
+
+            let byte_index_for_match_end = self.nfa.simulate(
+                input_substring,
+                self.greedy
+            );
+
+            if byte_index_for_match_end > 0 {
+                // Guaranteed match unless regex should match until end,
+                // in which case we need to check that the end has been
+                // reached.
+                if !self.until_end || byte_index_for_match_end == input_substring.len() {
+                    return (byte_index, byte_index + byte_index_for_match_end);
+                }
+            }
+
+            if byte_index == 0 && self.from_start {
+                // If we should only match from the start we should not
+                // iterate over all the match start positions.
+                return (0, 0);
+            }
+        }
+
+        return (0, 0);
+    }
+}
+
+// Private types
+
 /// A state in a NFA (non-deterministic finite automaton).
-pub struct State<'a> {
+struct State<'a> {
     state_type: StateType<'a>,
 
     // The states at the ends of the outgoing arrows of this state, if any
@@ -58,7 +133,7 @@ pub enum StateType<'a> {
 
 /// The state register contains and owns states. The states are accessed
 /// through it, and it manages the lifetime of the states.
-pub struct StateRegister<'a> {
+struct StateRegister<'a> {
     states: Vec<State<'a>>,
     current_id: usize
 }
@@ -66,7 +141,7 @@ pub struct StateRegister<'a> {
 /// A non-deterministic finite automaton.
 /// Defined by a state register which contains all the states, and the id of
 /// the entry point (start state) of the NFA.
-pub struct NFA<'a> {
+struct NFA<'a> {
     pub state_register: StateRegister<'a>,
     pub start_state: usize
 }
@@ -97,7 +172,7 @@ struct Fragment {
 /// concatenation characters in the infix notation, while a postfix
 /// notation would require it. This requires some extra logic to decide
 /// where the "would be" a concatenation character in the postifix notation.
-pub fn regex_to_nfa<'a>(regex: &'a str) -> NFA<'a> {
+fn regex_to_nfa<'a>(regex: &'a str) -> NFA<'a> {
     let mut register = StateRegister::new();
     let mut fragment_stack: Vec<Fragment> = Vec::new();
     let mut operator_stack: Vec<char> = Vec::new();
@@ -573,80 +648,7 @@ fn parse_bracket_character_class_to_nfa<'a>(
 
 }
 
-// Implementations
-
-impl<'a> Regex<'a> {
-    /// Create a new regex object given the regex string.
-    ///
-    /// This will construct the NFA needed to do the matching against the
-    /// regex string.
-    pub fn new(regex: &str, greedy: bool) -> Regex {
-        let starts_with_caret = regex.chars().next() == Some('^');
-        let ends_with_dollar = regex.chars().rev().next() == Some('$');
-
-        // The NFA regex matching does not implemet the caret or dollar,
-        // so they are removed from the postifx regex used to construct the NFA.
-        let mut start_index_nfa_regex: usize = 0;
-        let mut end_index_nfa_regex: usize = regex.len();
-        if starts_with_caret {
-            start_index_nfa_regex = 1;
-        }
-        if ends_with_dollar {
-            end_index_nfa_regex -= 1;
-        }
-
-        let nfa_regex = &regex[start_index_nfa_regex..end_index_nfa_regex];
-
-        // TODO: Error handling with bad regex!
-        Regex {
-            regex: String::from(regex),
-            nfa: regex_to_nfa(nfa_regex),
-            from_start: starts_with_caret,
-            until_end: ends_with_dollar,
-            greedy
-        }
-    }
-
-    /// Match the regex to a substring of `input`
-    ///
-    /// This function handles the caret (^) and dollar ($) meta character
-    /// functionality. If caret is set it will only match a substring starting
-    /// from the beginning of the input. If not it will check all possible
-    /// start positions as a possible match start. If dollar is set it will
-    /// require that the end of the substring match is the end of the input.
-    /// The matching once a start position is chosen is handled by the
-    /// NFA created from the regex string, excluding caret and dollar.
-    /// `greedy` controls wether or not we match greedily.
-    /// Returns the char byte index of the char where the matching substring
-    /// starts and the first char after it.
-    pub fn match_substring(&self, input: &str) -> (usize, usize) {
-        for (byte_index, _) in input.char_indices() {
-            let input_substring = &input[byte_index..];
-
-            let byte_index_for_match_end = self.nfa.simulate(
-                input_substring,
-                self.greedy
-            );
-
-            if byte_index_for_match_end > 0 {
-                // Guaranteed match unless regex should match until end,
-                // in which case we need to check that the end has been
-                // reached.
-                if !self.until_end || byte_index_for_match_end == input_substring.len() {
-                    return (byte_index, byte_index + byte_index_for_match_end);
-                }
-            }
-
-            if byte_index == 0 && self.from_start {
-                // If we should only match from the start we should not
-                // iterate over all the match start positions.
-                return (0, 0);
-            }
-        }
-
-        return (0, 0);
-    }
-}
+// Private implementations
 
 impl<'a> NFA<'a> {
     /// Run the NFA with a given input string.
@@ -659,7 +661,7 @@ impl<'a> NFA<'a> {
     /// not. If true the returned byte index will be the first character after
     /// the longest matching substring in `input`, if `false` it will be the
     /// index after the shortest matching substring in `input`.
-    pub fn simulate(&self, input: &str, greedy: bool) -> usize {
+    fn simulate(&self, input: &str, greedy: bool) -> usize {
         let register: &StateRegister = &self.state_register;
 
         // Current states the NFA is in.
@@ -921,7 +923,7 @@ fn insert_or_follow_split(into: &mut HashSet<usize>, state: &State, state_id: us
 /// Traverse a NFA given by a start state and state register to which it
 /// belongs, printing the nodes as we go along.
 /// Only used for debugging the creation of the NFA.
-pub fn print_nfa(start_id: usize, register: &StateRegister, visited: &mut HashSet<usize>) {
+fn print_nfa(start_id: usize, register: &StateRegister, visited: &mut HashSet<usize>) {
     let start = register.get_state(start_id);
 
     // To avoid infinte recursion we need to remember the states we
