@@ -6,7 +6,6 @@
 /// The NFA is represented by states in a state register, to simulate the
 /// NFA we need this and the id of the start state of the NFA.
 use std::str;
-use std::string::String;
 use std::vec::Vec;
 use std::fmt;
 use std::collections::HashSet;
@@ -16,7 +15,7 @@ use std::mem;
 
 /// A regular expression string, and functions to match a string to it.
 pub struct Regex<'a> {
-    pub regex: String,
+    pub regex: &'a str,
 
     // The NFA constructed from the regex and used internally for matching.
     nfa: NFA<'a>,
@@ -49,11 +48,12 @@ impl<'a> Regex<'a> {
         }
 
         let nfa_regex = &regex[start_index_nfa_regex..end_index_nfa_regex];
+        let nfa = regex_to_nfa(nfa_regex);
 
         // TODO: Error handling with bad regex!
         Regex {
-            regex: String::from(regex),
-            nfa: regex_to_nfa(nfa_regex),
+            regex,
+            nfa,
             from_start: starts_with_caret,
             until_end: ends_with_dollar,
             greedy
