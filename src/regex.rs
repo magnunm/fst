@@ -32,7 +32,7 @@ impl<'a> Regex<'a> {
     ///
     /// This will construct the NFA needed to do the matching against the
     /// regex string.
-    pub fn new(regex: &str, greedy: bool) -> Regex {
+    pub fn new(regex: &str, greedy: bool) -> Result<Regex, &'static str> {
         let starts_with_caret = regex.chars().next() == Some('^');
         let ends_with_dollar = regex.chars().rev().next() == Some('$');
 
@@ -48,16 +48,15 @@ impl<'a> Regex<'a> {
         }
 
         let nfa_regex = &regex[start_index_nfa_regex..end_index_nfa_regex];
-        let nfa = regex_to_nfa(nfa_regex);
+        let nfa = regex_to_nfa(nfa_regex)?;
 
-        // TODO: Error handling with bad regex!
-        Regex {
+        Ok(Regex {
             regex,
             nfa,
             from_start: starts_with_caret,
             until_end: ends_with_dollar,
             greedy
-        }
+        })
     }
 
     /// Match the regex to a substring of `input`
@@ -172,7 +171,7 @@ struct Fragment {
 /// concatenation characters in the infix notation, while a postfix
 /// notation would require it. This requires some extra logic to decide
 /// where the "would be" a concatenation character in the postifix notation.
-fn regex_to_nfa<'a>(regex: &'a str) -> NFA<'a> {
+fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
     let mut register = StateRegister::new();
     let mut fragment_stack: Vec<Fragment> = Vec::new();
     let mut operator_stack: Vec<char> = Vec::new();
@@ -223,10 +222,10 @@ fn regex_to_nfa<'a>(regex: &'a str) -> NFA<'a> {
         register: &mut StateRegister,
         fragment_stack: &mut Vec<Fragment>,
         operator_stack: &mut Vec<char>
-    ) {
+    ) -> Result<(), &'static str> {
         loop {
             if operator_stack.len() == 0 {
-                panic!("Unmatched parentheis: Could not find opening parenthesis.");
+                return Err("Unmatched parentheis: Could not find opening parenthesis.");
             }
 
             let operator_at_top = operator_stack.last().unwrap();
@@ -244,6 +243,7 @@ fn regex_to_nfa<'a>(regex: &'a str) -> NFA<'a> {
             }
         }
         operator_stack.pop(); // Discard both parentheses
+        Ok(())
     }
 
     let mut regex_char_indices = regex.char_indices();
@@ -290,7 +290,7 @@ fn regex_to_nfa<'a>(regex: &'a str) -> NFA<'a> {
                     );
                 }
                 else {
-                    panic!("Regex cannot end in a escape");
+                    return Err("Regex cannot end in a escape");
                 }
 
                 // To handle concatenation correctly on the next iteration the
@@ -315,7 +315,7 @@ fn regex_to_nfa<'a>(regex: &'a str) -> NFA<'a> {
                             break;
                         },
                         Some(_) => (),
-                        None => panic!("End of regex before end of bracket")
+                        None => return Err("End of regex before end of bracket")
                     }
                 }
 
@@ -351,7 +351,7 @@ fn regex_to_nfa<'a>(regex: &'a str) -> NFA<'a> {
                         &mut register,
                         &mut fragment_stack,
                         &mut operator_stack
-                    )
+                    )?;
                 }
                 // The dot character class
                 '.' => {
@@ -385,7 +385,7 @@ fn regex_to_nfa<'a>(regex: &'a str) -> NFA<'a> {
             Some('(') => {
                 // A parenthesis left in the operator stack is not possible after
                 // looping over all characters unless it was unmatched.
-                panic!("Unmatched parentheis: Could not find closing parenthesis.");
+                return Err("Unmatched parentheis: Could not find closing parenthesis.");
             },
             Some(operator) => parse_operator_to_nfa(
                 operator,
@@ -406,7 +406,8 @@ fn regex_to_nfa<'a>(regex: &'a str) -> NFA<'a> {
     if fragment_stack.len() > 0 {
         // More than one fragment left means the passed postifx regex
         // was ill formed.
-        panic!("Invalid postfix regex. More than one final fragment in construction.");
+        // TODO: Better error message: when does this happen?
+        return Err("Invalid regex. More than one final fragment in construction.");
     }
 
     if final_fragment_or_none.is_some() {
@@ -414,13 +415,13 @@ fn regex_to_nfa<'a>(regex: &'a str) -> NFA<'a> {
         let match_state = register.match_state();
         final_fragment.connect_ends(match_state, &mut register);
 
-        return NFA {
+        return Ok(NFA {
             state_register: register,
             start_state: final_fragment.start
-        };
+        });
     }
 
-    panic!("Unexpected empty stack after loop end!")
+    Err("Unexpected empty stack after loop end!")
 }
 
 /// Create a NFA fragment given `fragment_stack` and a regex operator
@@ -1011,10 +1012,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_regex_substring_matching() {
+    fn test_regex_substring_matching() -> Result<(), &'static str> {
         // Any string that ends in `a` + number or is any ordered selection
         // from the characters 教育漢字 but nothing more.
-        let regex = Regex::new("^.*a[0-9]+|教?育?漢?字?$", true);
+        let regex = Regex::new("^.*a[0-9]+|教?育?漢?字?$", true)?;
 
         assert_eq!(regex.match_substring("lorem ipsum a2021"),
                    (0, "lorem ipsum a2021".len()));
@@ -1024,27 +1025,29 @@ mod tests {
                    (0, "教漢".len()));
         assert_eq!(regex.match_substring("abc"),
                    (0, 0));
+        Ok(())
     }
 
 
     #[test]
-    fn test_regex_nfa_matching_1() {
+    fn test_regex_nfa_matching_1() -> Result<(), &'static str> {
         // Test alteration, unicode, concatenation
         let regex: &str = "(a|⻘)c";
-        let nfa = regex_to_nfa(regex);
+        let nfa = regex_to_nfa(regex)?;
 
         assert_eq!(nfa.simulate("ac", false), 2);
         assert_eq!(nfa.simulate("⻘c", false), "⻘c".len());
         assert_eq!(nfa.simulate("a", false), 0);  // Missing c
         assert_eq!(nfa.simulate("c", false), 0);  // Missing first char
         assert_eq!(nfa.simulate("xc", false), 0);  // Wrong first char
+        Ok(())
     }
 
     #[test]
-    fn test_regex_nfa_matching_2() {
+    fn test_regex_nfa_matching_2() -> Result<(), &'static str> {
         // Test one or more, zero or more
         let regex: &str = "(a|b)*c+";
-        let nfa = regex_to_nfa(regex);
+        let nfa = regex_to_nfa(regex)?;
 
         assert_eq!(nfa.simulate("ac", false), 2);
         assert_eq!(nfa.simulate("c", false), 1);
@@ -1054,13 +1057,14 @@ mod tests {
         assert_eq!(nfa.simulate("abc", false), 3);  // Both characters allowed in zero or more
         assert_eq!(nfa.simulate("b", false), 0);  // Too few c
         assert_eq!(nfa.simulate("", false), 0);  // Too few c
+        Ok(())
     }
 
     #[test]
-    fn test_regex_nfa_matching_3() {
+    fn test_regex_nfa_matching_3() -> Result<(), &'static str> {
         // Test character classes
         let regex: &str = ".*a[0-9]+";  // Any string that ends in `a` + number
-        let nfa = regex_to_nfa(regex);
+        let nfa = regex_to_nfa(regex)?;
 
         assert_eq!(nfa.simulate("a2021", true), 5);
         assert_eq!(nfa.simulate("åa9", true), "åa9".len());
@@ -1068,13 +1072,14 @@ mod tests {
         assert_eq!(nfa.simulate("b", true), 0);
         assert_eq!(nfa.simulate("a", true), 0);
         assert_eq!(nfa.simulate("aO", true), 0);
+        Ok(())
     }
 
     #[test]
-    fn test_regex_nfa_matching_4() {
+    fn test_regex_nfa_matching_4() -> Result<(), &'static str> {
         // Test escaping
         let regex: &str = "(\\.\\*)+";  // One or more literal .*
-        let nfa = regex_to_nfa(regex);
+        let nfa = regex_to_nfa(regex)?;
 
         assert_eq!(nfa.simulate(".*.*.*.*", true), 8);
         assert_eq!(nfa.simulate(".*.*.*.*", false), 2);
@@ -1083,13 +1088,14 @@ mod tests {
         assert_eq!(nfa.simulate("a", false), 0);
         assert_eq!(nfa.simulate("\\.\\*", false), 0);
         assert_eq!(nfa.simulate("\\.", false), 0);
+        Ok(())
     }
 
     #[test]
-    fn test_regex_nfa_matching_5() {
+    fn test_regex_nfa_matching_5() -> Result<(), &'static str> {
         // Test or and concatenation
         let regex: &str = "a(b|c)";
-        let nfa = regex_to_nfa(regex);
+        let nfa = regex_to_nfa(regex)?;
 
         assert_eq!(nfa.simulate("ab", false), 2);
         assert_eq!(nfa.simulate("ac", false), 2);
@@ -1097,14 +1103,15 @@ mod tests {
         assert_eq!(nfa.simulate("a", false), 0);
         assert_eq!(nfa.simulate("aa", false), 0);
         assert_eq!(nfa.simulate("", false), 0);
+        Ok(())
     }
 
     #[test]
-    fn test_regex_nfa_matching_6() {
+    fn test_regex_nfa_matching_6() -> Result<(), &'static str> {
         // Test zero or more, one or more, zero or one
         // Test unicode support
         let regex: &str = "a*ø?⻘+";
-        let nfa = regex_to_nfa(regex);
+        let nfa = regex_to_nfa(regex)?;
 
         assert_eq!(nfa.simulate("a⻘", false), "a⻘".len());
         assert_eq!(nfa.simulate("aø⻘", false), "aø⻘".len());
@@ -1113,5 +1120,6 @@ mod tests {
         assert_eq!(nfa.simulate("aaaaaaaaaaaa⻘⻘⻘⻘⻘⻘", false), "aaaaaaaaaaaa⻘".len());
         assert_eq!(nfa.simulate("aøø⻘", false), 0);  // Too many ø
         assert_eq!(nfa.simulate("aø", false), 0);  // Too few ⻘
+        Ok(())
     }
 }

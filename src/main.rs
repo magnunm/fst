@@ -4,7 +4,7 @@ mod regex;
 
 
 fn main() -> io::Result<()> {
-    let regex = regex::Regex::new("(a|⻘)c+", true);
+    let regex = regex::Regex::new("(a|⻘)c+", true).unwrap();
 
     let stdin = io::stdin();
     let mut input = stdin.lock().lines().next().unwrap().unwrap();
