@@ -13,18 +13,23 @@ fn main() -> io::Result<()> {
              .required(true)
              .index(1))
         .arg(Arg::with_name("FILE")
-             .help("The file to search")
-             .required(true)
+             .help("The file to search. If none read stdin.")
              .index(2))
         .get_matches();
 
     let pattern = matches.value_of("PATTERN").unwrap();
     let regex = regex::Regex::new(&pattern, true).unwrap();
 
-    let file_name = matches.value_of("FILE").unwrap();
-    let file = File::open(&file_name)?;
+    let mut reader: Box<BufRead>;
 
-    let mut reader = BufReader::new(file);
+    if let Some(file_name) = matches.value_of("FILE") {
+        let file = File::open(&file_name)?;
+        reader = Box::new(BufReader::new(file));
+    } else {
+        let stdin = io::stdin();
+        reader = Box::new(BufReader::new(stdin));
+    }
+
     let mut line = String::new();
 
     loop {
