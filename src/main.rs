@@ -24,7 +24,10 @@ fn main() -> io::Result<()> {
         .get_matches();
 
     let pattern = matches.value_of("PATTERN").unwrap();
-    let regex = regex::Regex::new(&pattern, true).unwrap();
+    let regex = match regex::Regex::new(&pattern, true) {
+        Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidInput, e)),
+        Ok(r) => r
+    };
 
     let mut reader: Box<BufRead>;
 
