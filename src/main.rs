@@ -2,6 +2,8 @@ use std::io::{self, BufReader, BufRead};
 use std::fs::File;
 
 use clap::{Arg, App};
+use ansi_term::Colour::Red;
+
 mod regex;
 
 
@@ -15,6 +17,10 @@ fn main() -> io::Result<()> {
         .arg(Arg::with_name("FILE")
              .help("The file to search. If none read stdin.")
              .index(2))
+        .arg(Arg::with_name("color")
+             .short("c")
+             .long("color")
+             .help("Enable colors"))
         .get_matches();
 
     let pattern = matches.value_of("PATTERN").unwrap();
@@ -39,8 +45,14 @@ fn main() -> io::Result<()> {
         let (match_start, match_end) = regex.match_substring(&line);
 
         if match_start != match_end {
-            // Strip final newline character
-            println!("{}", &line[..(bytes_read - 1)])
+            if matches.is_present("color") {
+                println!("{}{}{}",
+                         &line[..match_start],
+                         Red.paint(&line[match_start..match_end]),
+                         &line[match_end..(bytes_read - 1)]) // Strip newline
+            } else {
+                println!("{}", &line[..(bytes_read - 1)])
+            }
         }
 
         line.clear();
