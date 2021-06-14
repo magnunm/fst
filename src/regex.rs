@@ -188,7 +188,7 @@ fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
         register: &mut StateRegister,
         fragment_stack: &mut Vec<Fragment>,
         operator_stack: &mut Vec<char>
-    ) {
+    ) -> Result<(), &'static str> {
         let opening_bracket_on_operator_stack_top: bool =
             operator_stack.last() == Some(&'(');
 
@@ -203,7 +203,7 @@ fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
                             op,
                             register,
                             fragment_stack
-                        ),
+                        )?,
                         None => break
                     }
                 }
@@ -214,6 +214,7 @@ fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
         }
 
         operator_stack.push(current_char);
+        Ok(())
     };
 
     // When a grouping is over, as signaled by a closing parentheis,
@@ -238,7 +239,7 @@ fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
                     op,
                     register,
                     fragment_stack
-                ),
+                )?,
                 None => break
             }
         }
@@ -276,7 +277,7 @@ fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
                     &mut register,
                     &mut fragment_stack,
                     &mut operator_stack
-                );
+                )?;
             }
 
             // The escape character. Treat the next character as literal no
@@ -340,7 +341,7 @@ fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
                         &mut register,
                         &mut fragment_stack,
                         &mut operator_stack
-                    );
+                    )?;
                 },
                 // Parentheses: grouping
                 '(' => {
@@ -391,7 +392,7 @@ fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
                 operator,
                 &mut register,
                 &mut fragment_stack
-            ),
+            )?,
             None => break
         }
     }
@@ -436,32 +437,34 @@ fn parse_operator_to_nfa(
     operator: char,
     register: &mut StateRegister,
     fragment_stack: &mut Vec<Fragment>
-) {
+) -> Result<(), &'static str> {
     match operator {
         // Alteration (or)
         '|' => {
-            parse_alteration_operator_to_nfa(register, fragment_stack);
+            parse_alteration_operator_to_nfa(register, fragment_stack)?;
         },
         // Concatenation (and)
         '~' => {
-            parse_concatenation_operator_to_nfa(register, fragment_stack);
+            parse_concatenation_operator_to_nfa(register, fragment_stack)?;
         },
         // Zero or more
         '*' => {
-            parse_zero_or_more_operator_to_nfa(register, fragment_stack);
+            parse_zero_or_more_operator_to_nfa(register, fragment_stack)?;
         },
         // One or more
         '+' => {
-            parse_one_or_more_operator_to_nfa(register, fragment_stack);
+            parse_one_or_more_operator_to_nfa(register, fragment_stack)?;
         },
         // Zero or one
         '?' => {
-            parse_zero_or_one_operator_to_nfa(register, fragment_stack);
+            parse_zero_or_one_operator_to_nfa(register, fragment_stack)?;
         },
         _ => {
             panic!("Invalid regex operator found in operator stack.")
         }
     }
+
+    Ok(())
 }
 
 /// Create a NFA fragment given `fragment_stack` and a literal char.
@@ -493,7 +496,18 @@ fn parse_literal_to_nfa(
 fn parse_concatenation_operator_to_nfa(
     register: &mut StateRegister,
     fragment_stack: &mut Vec<Fragment>
-) {
+) -> Result<(), &'static str> {
+    if fragment_stack.len() < 2 {
+        // Since the concatenation operator is implicit in the regex
+        // notation used by the end user, a erroneous state like the
+        // one encountered here is not due to the user writing a
+        // malformed regex.  Instead this would be a bug with the
+        // functionality that converts the implicit concatenation to
+        // explicit concatation, therefore we panic here instead of
+        // erroring.
+        panic!("Too few arguments for concatenation operator. Two required.")
+    }
+
     // Connect the ends of fragment_1 to the start of fragment_2
     let fragment_2 = pop_or_panic(fragment_stack, None);
     let fragment_1 = pop_or_panic(fragment_stack, None);
@@ -507,6 +521,7 @@ fn parse_concatenation_operator_to_nfa(
         ends: fragment_2.ends
     };
     fragment_stack.push(fused_fragment);
+    Ok(())
 }
 
 /// Create a NFA fragment given `fragment_stack` and a alteration.
@@ -518,7 +533,11 @@ fn parse_concatenation_operator_to_nfa(
 fn parse_alteration_operator_to_nfa(
     register: &mut StateRegister,
     fragment_stack: &mut Vec<Fragment>
-) {
+) -> Result<(), &'static str> {
+    if fragment_stack.len() < 2 {
+        return Err("The alteration operator requires two operands but fewer where found. Have you forgotten to escape a operator?");
+    }
+
     let fragment_2 = pop_or_panic(fragment_stack, None);
     let fragment_1 = pop_or_panic(fragment_stack, None);
 
@@ -537,6 +556,7 @@ fn parse_alteration_operator_to_nfa(
         ends: [&fragment_1.ends[..], &fragment_2.ends[..]].concat()
     };
     fragment_stack.push(split_fragment);
+    Ok(())
 }
 
 /// Create a NFA fragment given `fragment_stack` and a "?"
@@ -548,7 +568,11 @@ fn parse_alteration_operator_to_nfa(
 fn parse_zero_or_one_operator_to_nfa (
     register: &mut StateRegister,
     fragment_stack: &mut Vec<Fragment>
-) {
+) -> Result<(), &'static str> {
+    if fragment_stack.len() < 1 {
+        return Err("No valid operand found for the zero or one operator. Have you forgotten to escape a operator?");
+    }
+
     let fragment = pop_or_panic(fragment_stack, None);
     let split_state = register.new_split(Some(fragment.start), None);
 
@@ -558,6 +582,7 @@ fn parse_zero_or_one_operator_to_nfa (
     };
 
     fragment_stack.push(zero_or_one_fragment);
+    Ok(())
 }
 
 /// Create a NFA fragment given `fragment_stack` and a "*".
@@ -569,7 +594,11 @@ fn parse_zero_or_one_operator_to_nfa (
 fn parse_zero_or_more_operator_to_nfa(
     register: &mut StateRegister,
     fragment_stack: &mut Vec<Fragment>
-) {
+) -> Result<(), &'static str> {
+    if fragment_stack.len() < 1 {
+        return Err("No valid operand found for the zero or more operator. Have you forgotten to escape a operator?");
+    }
+
     let fragment = pop_or_panic(fragment_stack, None);
     let split_state = register.new_split(Some(fragment.start), None);
 
@@ -581,6 +610,7 @@ fn parse_zero_or_more_operator_to_nfa(
     };
 
     fragment_stack.push(zero_or_more_fragment);
+    Ok(())
 }
 
 /// Create a NFA fragment given `fragment_stack` and a "+".
@@ -592,7 +622,11 @@ fn parse_zero_or_more_operator_to_nfa(
 fn parse_one_or_more_operator_to_nfa(
     register: &mut StateRegister,
     fragment_stack: &mut Vec<Fragment>
-) {
+) -> Result<(), &'static str> {
+    if fragment_stack.len() < 1 {
+        return Err("No valid operand found for the one or more operator. Have you forgotten to escape a operator?");
+    }
+
     let fragment = pop_or_panic(fragment_stack, None);
     let split_state = register.new_split(Some(fragment.start), None);
 
@@ -604,6 +638,7 @@ fn parse_one_or_more_operator_to_nfa(
     };
 
     fragment_stack.push(one_or_more_fragment);
+    Ok(())
 }
 
 /// Create a NFA fragment given `fragment_stack` and a dot.
