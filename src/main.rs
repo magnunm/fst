@@ -49,10 +49,16 @@ fn main() -> io::Result<()> {
 
         if match_start != match_end {
             if matches.is_present("color") {
-                println!("{}{}{}",
-                         &line[..match_start],
-                         Red.paint(&line[match_start..match_end]),
-                         &line[match_end..(bytes_read - 1)]) // Strip newline
+                if match_end == bytes_read {
+                    println!("{}{}",
+                             &line[..match_start],
+                             Red.paint(&line[match_start..match_end]))
+                } else {
+                    println!("{}{}{}",
+                             &line[..match_start],
+                             Red.paint(&line[match_start..match_end]),
+                             &line[match_end..(bytes_read - 1)]) // Strip newline
+                }
             } else {
                 println!("{}", &line[..(bytes_read - 1)])
             }
