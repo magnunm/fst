@@ -27,6 +27,8 @@ fn main() -> io::Result<()> {
              .help("Match greedily"))
         .get_matches();
 
+    let color = matches.is_present("color");
+
     let pattern = matches.value_of("PATTERN").unwrap();
     let greedy = matches.is_present("greedy");
     let regex = match regex::Regex::new(&pattern, greedy) {
@@ -52,25 +54,37 @@ fn main() -> io::Result<()> {
 
         let (match_start, match_end) = regex.match_substring(&line);
 
-        if match_start != match_end {
-            if matches.is_present("color") {
-                if match_end == bytes_read {
-                    println!("{}{}",
-                             &line[..match_start],
-                             Red.paint(&line[match_start..match_end]))
-                } else {
-                    println!("{}{}{}",
-                             &line[..match_start],
-                             Red.paint(&line[match_start..match_end]),
-                             &line[match_end..(bytes_read - 1)]) // Strip newline
-                }
-            } else {
-                println!("{}", &line[..(bytes_read - 1)])
-            }
-        }
+        print_line_with_match(&line, match_start, match_end, bytes_read, color);
 
         line.clear();
     }
 
     Ok(())
+}
+
+
+fn print_line_with_match(
+    line: &str,
+    match_start: usize,
+    match_end: usize,
+    line_length: usize,
+    color: bool
+) {
+    if match_start == match_end { return; }
+
+    if color {
+        if match_end == line_length {
+            println!("{}{}",
+                     &line[..match_start],
+                     Red.paint(&line[match_start..match_end]));
+            return;
+        }
+        println!("{}{}{}",
+                 &line[..match_start],
+                 Red.paint(&line[match_start..match_end]),
+                 &line[match_end..(line_length - 1)]); // Strip newline
+        return;
+
+    }
+    println!("{}", &line[..(line_length - 1)])
 }
