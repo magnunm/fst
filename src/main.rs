@@ -70,7 +70,11 @@ fn main() -> io::Result<()> {
             "ip" => print_line_without_match(&line, match_start, match_end, bytes_read),
             "m" => print_matching_substring(&line, match_start, match_end),
             "im" => print_all_but_matching_substring(&line, match_start, match_end, bytes_read),
-            "c" => { num_matching_lines += 1; },
+            "c" => {
+                if match_start != match_end {
+                    num_matching_lines += 1;
+                }
+            },
             _ => return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!("Unsupported operation '{}'", operation)))
