@@ -25,9 +25,13 @@ fn main() -> io::Result<()> {
              .short("g")
              .long("greedy")
              .help("Match greedily"))
+        .arg(Arg::with_name("operation")
+             .short("o")
+             .long("operation")
+             .value_name("OPERATION")
+             .takes_value(true)
+             .help("Operation to preform on the lines of the FILE. Supported values are: p (print matching lines), ip (inverse print, print non-matching lines, m (print only matching substrings), im (print the matching lines with the matching substrings removed) and c (count matching lines). Default is p."))
         .get_matches();
-
-    let color = matches.is_present("color");
 
     let pattern = matches.value_of("PATTERN").unwrap();
     let greedy = matches.is_present("greedy");
@@ -48,21 +52,41 @@ fn main() -> io::Result<()> {
 
     let mut line = String::new();
 
+    let color = matches.is_present("color");
+    let operation = matches.value_of("operation").unwrap_or("p");
+
+    let mut num_matching_lines = 0;
+
     loop {
         let bytes_read = reader.read_line(&mut line)?;
         if bytes_read == 0 { break; }
 
-        let (match_start, match_end) = regex.match_substring(&line);
+        // Strip newline from string used to match against
+        let (match_start, match_end) = regex.match_substring(
+            &line[..(bytes_read - 1)]);
 
-        print_line_with_match(&line, match_start, match_end, bytes_read, color);
+        match operation {
+            "p" => print_line_with_match(&line, match_start, match_end, bytes_read, color),
+            "ip" => print_line_without_match(&line, match_start, match_end, bytes_read),
+            "m" => print_matching_substring(&line, match_start, match_end),
+            "im" => print_all_but_matching_substring(&line, match_start, match_end, bytes_read),
+            "c" => { num_matching_lines += 1; },
+            _ => return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Unsupported operation '{}'", operation)))
+        }
 
         line.clear();
+    }
+
+    if operation == "c" {
+        println!("{}", num_matching_lines);
     }
 
     Ok(())
 }
 
-
+/// Print the given line if it contains a nonempty matching substring.
 fn print_line_with_match(
     line: &str,
     match_start: usize,
@@ -87,4 +111,44 @@ fn print_line_with_match(
 
     }
     println!("{}", &line[..(line_length - 1)])
+}
+
+/// Print the given line if it does not contain a nonempty matching substring.
+fn print_line_without_match(
+    line: &str,
+    match_start: usize,
+    match_end: usize,
+    line_length: usize,
+) {
+    if match_start == match_end {
+        println!("{}", &line[..(line_length - 1)]) // Strip newline
+    }
+}
+
+/// Print the mathcing substring of a matching line.
+fn print_matching_substring(
+    line: &str,
+    match_start: usize,
+    match_end: usize
+) {
+    if match_start == match_end { return; }
+    println!("{}", &line[match_start..match_end])
+}
+
+/// Print all but the mathcing substring of a matching line.
+fn print_all_but_matching_substring(
+    line: &str,
+    match_start: usize,
+    match_end: usize,
+    line_length: usize
+) {
+    if match_start == match_end { return; }
+
+    if match_end == line_length {
+        println!("{}", &line[..match_start]);
+        return;
+    }
+    println!("{}{}",
+             &line[..match_start],
+             &line[match_end..(line_length - 1)]); // Strip newline
 }
