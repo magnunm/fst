@@ -225,7 +225,7 @@ fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
     ) -> Result<(), &'static str> {
         loop {
             if operator_stack.len() == 0 {
-                return Err("Unmatched parentheis: Could not find opening parenthesis.");
+                return Err("Unmatched parenthesis: Could not find opening parenthesis.");
             }
 
             let operator_at_top = operator_stack.last().unwrap();
