@@ -9,7 +9,7 @@ mod regex;
 
 fn main() -> io::Result<()> {
     let matches = App::new("fst")
-        .about("A stream filter")
+        .about("A stream filter. Supported OPERATION's that can be applied are: p (print matching lines), ip (inverse print, print non-matching lines), m (print only matching substrings), im (print the matching lines with the matching substrings removed) and c (count matching lines). Default is p.")
         .arg(Arg::with_name("PATTERN")
              .help("The pattern to match")
              .required(true)
@@ -30,7 +30,7 @@ fn main() -> io::Result<()> {
              .long("operation")
              .value_name("OPERATION")
              .takes_value(true)
-             .help("Operation to preform on the lines of the FILE. Supported values are: p (print matching lines), ip (inverse print, print non-matching lines, m (print only matching substrings), im (print the matching lines with the matching substrings removed) and c (count matching lines). Default is p."))
+             .help("Operation to preform on the lines of the FILE."))
         .get_matches();
 
     let pattern = matches.value_of("PATTERN").unwrap();
