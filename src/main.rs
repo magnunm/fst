@@ -34,7 +34,7 @@ fn main() -> io::Result<()> {
         Ok(r) => r
     };
 
-    let mut reader: Box<BufRead>;
+    let mut reader: Box<dyn BufRead>;
 
     if let Some(file_name) = matches.value_of("FILE") {
         let file = File::open(&file_name)?;
