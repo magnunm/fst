@@ -782,10 +782,11 @@ impl<'a> NFA<'a> {
                 }
             }
 
-            // If `next` is empty there is no need to continue iterating
-            // over the characters. If matching greedily we might have
-            // encountered a already, so we should return the index of
-            // that. If not this return will correctly by zero.
+            // If `next` is empty there is no need to continue
+            // iterating over the characters. If matching greedily we
+            // might have encountered a match already, so we should
+            // return the index of that. If not this return will
+            // correctly be zero.
             if next.is_empty() {
                 return largest_matching_char_index;
             }
