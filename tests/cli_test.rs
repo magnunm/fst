@@ -25,7 +25,6 @@ somesite.xyz/example.com").unwrap();
 
     // Regex search
     Command::cargo_bin("fst").unwrap()
-        .arg("-g")  // FIXME: This should not be needed here due to the $
         .arg("^example\\.com(/.*)*$")
         .arg(&test_file_path)
         .assert()
@@ -55,7 +54,6 @@ example.com/api?some=arg
         .stdout("example.com/?some=arg\n");
 
     Command::cargo_bin("fst").unwrap()
-        .arg("-g")  // FIXME: This should not be needed here due to the $
         .arg("-o")
         .arg("ip")
         .arg("^example\\.com(/.*)*$")
@@ -68,7 +66,6 @@ somesite.xyz/example.co
 ");  // FIXME: Why is the last "m" removed? Can not reproduce.
 
     Command::cargo_bin("fst").unwrap()
-        .arg("-g")  // FIXME: This should not be needed here due to the $
         .arg("-o")
         .arg("c")
         .arg("^example\\.com(/.*)*$")

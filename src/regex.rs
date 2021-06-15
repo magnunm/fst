@@ -75,9 +75,13 @@ impl<'a> Regex<'a> {
         for (byte_index, _) in input.char_indices() {
             let input_substring = &input[byte_index..];
 
+            // Since we are considering the input is a single line
+            // we should when matching until the end (when the regex ends in
+            // `$`) match greedily on the tail of the match. This because the
+            // `$` here always means the end of the `input` string.
             let byte_index_for_match_end = self.nfa.simulate(
                 input_substring,
-                self.greedy
+                self.greedy || self.until_end
             );
 
             if byte_index_for_match_end > 0 {
