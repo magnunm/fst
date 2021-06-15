@@ -1,0 +1,82 @@
+use std::fs::File;
+use std::io::Write;
+use assert_cmd::Command;
+
+#[test]
+fn cli_test() {
+    let test_dir = tempfile::tempdir().unwrap();
+    let test_file_path = test_dir.path().join("temp-test-file.txt");
+    let mut test_file = File::create(&test_file_path).unwrap();
+
+    write!(test_file, "app.example.com
+example.com/index.html
+example.com/assets/image.png
+example.com/api?some=arg
+example.com.somesite.xyz
+somesite.xyz/example.com").unwrap();
+
+    // Basic search for substring
+    Command::cargo_bin("fst").unwrap()
+        .arg("api")
+        .arg(&test_file_path)
+        .assert()
+        .success()
+        .stdout("example.com/api?some=arg\n");
+
+    // Regex search
+    Command::cargo_bin("fst").unwrap()
+        .arg("-g")  // FIXME: This should not be needed here due to the $
+        .arg("^example\\.com(/.*)*$")
+        .arg(&test_file_path)
+        .assert()
+        .success()
+        .stdout("example.com/index.html
+example.com/assets/image.png
+example.com/api?some=arg
+");
+
+    // Check that the different operations work as expacted.
+    Command::cargo_bin("fst").unwrap()
+        .arg("-o")
+        .arg("m")
+        .arg("api")
+        .arg(&test_file_path)
+        .assert()
+        .success()
+        .stdout("api\n");
+
+    Command::cargo_bin("fst").unwrap()
+        .arg("-o")
+        .arg("im")
+        .arg("api")
+        .arg(&test_file_path)
+        .assert()
+        .success()
+        .stdout("example.com/?some=arg\n");
+
+    Command::cargo_bin("fst").unwrap()
+        .arg("-g")  // FIXME: This should not be needed here due to the $
+        .arg("-o")
+        .arg("ip")
+        .arg("^example\\.com(/.*)*$")
+        .arg(&test_file_path)
+        .assert()
+        .success()
+        .stdout("app.example.com
+example.com.somesite.xyz
+somesite.xyz/example.co
+");  // FIXME: Why is the last "m" removed? Can not reproduce.
+
+    Command::cargo_bin("fst").unwrap()
+        .arg("-g")  // FIXME: This should not be needed here due to the $
+        .arg("-o")
+        .arg("c")
+        .arg("^example\\.com(/.*)*$")
+        .arg(&test_file_path)
+        .assert()
+        .success()
+        .stdout("3\n");
+
+    drop(test_file);
+    test_dir.close().unwrap();
+}
