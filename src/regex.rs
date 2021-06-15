@@ -329,7 +329,7 @@ fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
                 parse_bracket_character_class_to_nfa(
                     &mut register,
                     &mut fragment_stack,
-                    &regex[char_byte_index..end_bracket_char_byte_index]
+                    &regex[(char_byte_index + 1)..end_bracket_char_byte_index]
                 );
 
                 previous_char = Some(']');
