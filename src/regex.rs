@@ -1013,11 +1013,24 @@ fn matches_bracket(character: char, bracketed_expression: &str) -> bool {
     let mut current: Option<char> = bracketed_chars.next();
     let mut next: Option<char> = bracketed_chars.next();
 
+    // If the first character is a caret the bracket is negated, i.e.
+    // a character matches if it is not in the bracket.
+    let is_negated = previous == Some('^');
+
+    if is_negated {
+        previous = current;
+        current = next;
+        next = bracketed_chars.next();
+    }
+
+    let mut result = false;
+
     while previous.is_some() {
         if current == Some('-') && next.is_some() {
             // We are looking at a valid range
             if char_in_range(character, previous.unwrap(), next.unwrap()) {
-                return true;
+                result = true;
+                break;
             }
 
             // Go to the next triplet of characters
@@ -1028,7 +1041,8 @@ fn matches_bracket(character: char, bracketed_expression: &str) -> bool {
         else {
             // Base case: three characters that are not a valid range
             if character == previous.unwrap() {
-                return true;
+                result = true;
+                break;
             }
 
             previous = current;
@@ -1037,7 +1051,10 @@ fn matches_bracket(character: char, bracketed_expression: &str) -> bool {
         }
     }
 
-    false
+    if is_negated {
+        return !result;
+    }
+    result
 }
 
 /// Is a character in the given character range.

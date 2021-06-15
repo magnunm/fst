@@ -25,11 +25,12 @@ somesite.xyz/example.com").unwrap();
 
     // Regex search
     Command::cargo_bin("fst").unwrap()
-        .arg("^example\\.com(/.*)*$")
+        .arg("^[^/]*example\\.com(/.*)*$")
         .arg(&test_file_path)
         .assert()
         .success()
-        .stdout("example.com/index.html
+        .stdout("app.example.com
+example.com/index.html
 example.com/assets/image.png
 example.com/api?some=arg
 ");
@@ -56,23 +57,22 @@ example.com/api?some=arg
     Command::cargo_bin("fst").unwrap()
         .arg("-o")
         .arg("ip")
-        .arg("^example\\.com(/.*)*$")
+        .arg("^[^/]*example\\.com(/.*)*$")
         .arg(&test_file_path)
         .assert()
         .success()
-        .stdout("app.example.com
-example.com.somesite.xyz
+        .stdout("example.com.somesite.xyz
 somesite.xyz/example.co
 ");  // FIXME: Why is the last "m" removed? Can not reproduce.
 
     Command::cargo_bin("fst").unwrap()
         .arg("-o")
         .arg("c")
-        .arg("^example\\.com(/.*)*$")
+        .arg("^[^/]*example\\.com(/.*)*$")
         .arg(&test_file_path)
         .assert()
         .success()
-        .stdout("3\n");
+        .stdout("4\n");
 
     drop(test_file);
     test_dir.close().unwrap();
