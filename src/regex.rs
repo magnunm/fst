@@ -23,7 +23,7 @@ pub struct Regex<'a> {
     // dollar ($).
     from_start: bool,
     until_end: bool,
-    // Greedy mathcing
+    // Greedy mathcing on the tail
     greedy: bool,
 }
 
@@ -68,9 +68,11 @@ impl<'a> Regex<'a> {
     /// require that the end of the substring match is the end of the input.
     /// The matching once a start position is chosen is handled by the
     /// NFA created from the regex string, excluding caret and dollar.
-    /// `greedy` controls wether or not we match greedily.
-    /// Returns the char byte index of the char where the matching substring
-    /// starts and the first char after it.
+    /// `greedy` controls wether or not we match the tail of the
+    /// expression greedily. The start of the regex is always mathced
+    /// greedily.
+    /// Returns the char byte index of the char where the
+    /// matching substring starts and the first char after it.
     pub fn match_substring(&self, input: &str) -> (usize, usize) {
         for (byte_index, _) in input.char_indices() {
             let input_substring = &input[byte_index..];
@@ -697,10 +699,11 @@ impl<'a> NFA<'a> {
     /// Returns the character byte index of the first character after the
     /// string that matches the pattern. A return value of 0 means there
     /// was no match at all.
-    /// `greedy` controls wether or not we will match the regex greedily or
-    /// not. If true the returned byte index will be the first character after
-    /// the longest matching substring in `input`, if `false` it will be the
-    /// index after the shortest matching substring in `input`.
+    /// `greedy` controls wether or not we will match the tail of the
+    /// regex greedily or not. If true the returned byte index will be
+    /// the first character after the longest matching substring in
+    /// `input`, if `false` it will be the index after the shortest
+    /// matching substring in `input`.
     fn simulate(&self, input: &str, greedy: bool) -> usize {
         let register: &StateRegister = &self.state_register;
 
