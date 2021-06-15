@@ -195,27 +195,27 @@ fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
         fragment_stack: &mut Vec<Fragment>,
         operator_stack: &mut Vec<char>
     ) -> Result<(), &'static str> {
-        let opening_bracket_on_operator_stack_top: bool =
-            operator_stack.last() == Some(&'(');
+        if operator_stack.last() == Some(&'(') {
+            operator_stack.push(current_char);
+            return Ok(());
+        }
 
-        if !opening_bracket_on_operator_stack_top {
-            while operator_stack.len() > 0 {
-                let do_pop_from_op_stack =
-                    precedence(*operator_stack.last().unwrap()) > precedence(current_char);
+        while operator_stack.len() > 0 {
+            let do_pop_from_op_stack =
+                precedence(*operator_stack.last().unwrap()) > precedence(current_char);
 
-                if do_pop_from_op_stack {
-                    match operator_stack.pop() {
-                        Some(op) => parse_operator_to_nfa(
-                            op,
-                            register,
-                            fragment_stack
-                        )?,
-                        None => break
-                    }
+            if do_pop_from_op_stack {
+                match operator_stack.pop() {
+                    Some(op) => parse_operator_to_nfa(
+                        op,
+                        register,
+                        fragment_stack
+                    )?,
+                    None => break
                 }
-                else {
-                    break;
-                }
+            }
+            else {
+                break;
             }
         }
 
