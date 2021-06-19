@@ -431,23 +431,15 @@ impl<'a> NFABuilder<'a> {
     /// When a grouping is over, as signaled by a closing parentheis,
     /// pop the operator stack until we find the start of the grouping.
     fn handle_closing_paren(&mut self) -> Result<(), &'static str> {
-        loop {
-            if self.operator_stack.len() == 0 {
-                return Err("Unmatched parenthesis: Could not find opening parenthesis.");
+        while let Some(operator) = self.operator_stack.pop() {
+            if operator == '(' {
+                return Ok(());
             }
 
-            let operator_at_top = self.operator_stack.last().unwrap();
-            if *operator_at_top == '(' {
-                break;
-            }
-
-            match self.operator_stack.pop() {
-                Some(op) => self.parse_operator_to_nfa(op)?,
-                None => break
-            }
+            self.parse_operator_to_nfa(operator)?;
         }
-        self.operator_stack.pop(); // Discard both parentheses
-        Ok(())
+
+        Err("Unmatched parenthesis: Could not find opening parenthesis.")
     }
 
     /// Parse all remaining operators on the stack
