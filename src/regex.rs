@@ -417,18 +417,10 @@ impl<'a> NFABuilder<'a> {
             return Ok(());
         }
 
-        while self.operator_stack.len() > 0 {
-            let do_pop_from_op_stack =
-                precedence(*self.operator_stack.last().unwrap()) > precedence(operator);
-
-            if do_pop_from_op_stack {
-                match self.operator_stack.pop() {
-                    Some(op) => self.parse_operator_to_nfa(op)?,
-                    None => break
-                }
-            }
-            else {
-                break;
+        while self.should_pop_from_operator_stack(operator) {
+            match self.operator_stack.pop() {
+                Some(op) => self.parse_operator_to_nfa(op)?,
+                None => break
             }
         }
 
@@ -671,6 +663,15 @@ impl<'a> NFABuilder<'a> {
         };
         self.fragment_stack.push(single_bracket_fragment);
 
+    }
+
+    /// Should we pop from the operator stack before adding the new operator?
+    fn should_pop_from_operator_stack(&self, new_operator: char) -> bool {
+        if self.operator_stack.len() == 0 {
+            return false;
+        }
+
+        precedence(*self.operator_stack.last().unwrap()) > precedence(new_operator)
     }
 }
 
