@@ -11,8 +11,6 @@ use std::fmt;
 use std::collections::HashSet;
 use std::mem;
 
-// Public types and implementations
-
 /// A regular expression string, and functions to match a string to it.
 pub struct Regex<'a> {
     pub regex: &'a str,
@@ -106,8 +104,6 @@ impl<'a> Regex<'a> {
     }
 }
 
-// Private types
-
 /// A state in a NFA (non-deterministic finite automaton).
 struct State<'a> {
     state_type: StateType<'a>,
@@ -119,7 +115,7 @@ struct State<'a> {
 }
 
 /// Types of states in the NFA's built from regular expressions.
-pub enum StateType<'a> {
+enum StateType<'a> {
     // Connects to two states via empty/epsilon arrows
     Split,
     // The special state representing a match to the regex. No outgoing arrows.
@@ -147,8 +143,8 @@ struct StateRegister<'a> {
 /// Defined by a state register which contains all the states, and the id of
 /// the entry point (start state) of the NFA.
 struct NFA<'a> {
-    pub state_register: StateRegister<'a>,
-    pub start_state: usize
+    state_register: StateRegister<'a>,
+    start_state: usize
 }
 
 /// A graph of states with a single input state. Represented
@@ -163,8 +159,6 @@ struct Fragment {
     start: usize,
     ends: Vec<usize>
 }
-
-// Main algorithm
 
 /// Convert a regular expression to a NFA.
 ///
@@ -690,8 +684,6 @@ fn parse_bracket_character_class_to_nfa<'a>(
 
 }
 
-// Private implementations
-
 impl<'a> NFA<'a> {
     /// Run the NFA with a given input string.
     ///
@@ -929,8 +921,6 @@ impl<'a> Fragment {
         }
     }
 }
-
-// Utility functions
 
 /// Operator precedence for regex operators. Higher value
 /// means higher precedence.
