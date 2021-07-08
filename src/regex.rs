@@ -270,7 +270,7 @@ impl<'a> NFA<'a> {
             insert_or_follow_split(
                 next, next_state, next_state_id, register
             );
-        };
+        }
 
         for (byte_index, character) in input.char_indices() {
             // Use the current states to compute the next states given the
@@ -823,34 +823,6 @@ fn insert_or_follow_split(into: &mut HashSet<usize>, state: &State, state_id: us
     }
 }
 
-/// Traverse a NFA given by a start state and state register to which it
-/// belongs, printing the nodes as we go along.
-/// Only used for debugging the creation of the NFA.
-fn print_nfa(start_id: usize, register: &StateRegister, visited: &mut HashSet<usize>) {
-    let start = register.get_state(start_id);
-
-    // To avoid infinte recursion we need to remember the states we
-    // have already visited.
-    if visited.contains(&start_id) {
-        println!("{}", start);
-        return;
-    }
-
-    visited.insert(start_id);
-
-    if let StateType::Match = start.state_type {
-        println!("{}", start);
-    }
-    else {
-        println!("{}", start);
-        for out_state_id in &start.out[..] {
-            if out_state_id.is_some() {
-                print_nfa(out_state_id.unwrap(), register, visited);
-            }
-        }
-    }
-}
-
 /// pop the last element from a vector, panic if empty
 fn pop_or_panic<T>(vector: &mut Vec<T>, panic_message: Option<&'static str>) -> T {
     let result: Option<T> = vector.pop();
@@ -858,7 +830,7 @@ fn pop_or_panic<T>(vector: &mut Vec<T>, panic_message: Option<&'static str>) -> 
         return result.unwrap();
     }
     if let Some(message) = panic_message {
-        panic!(message);
+        panic!("{}", message);
     }
     panic!("Attempted pop of empty vector.");
 }
@@ -921,7 +893,7 @@ fn char_in_range(character: char, range_start: char, range_end: char) -> bool {
     if range_start < range_end {
         return range_start <= character && character <= range_end
     }
-    panic!(format!("Invalid range: {}-{}", range_start, range_end))
+    panic!("Invalid range: {}-{}", range_start, range_end)
 }
 
 /// Determine if two characters are concatenated if they appear after
