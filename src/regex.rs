@@ -412,11 +412,6 @@ impl<'a> NFABuilder<'a> {
     /// Note that an operator here is not the same as a metacharacter.
     /// The former is a subset of the latter.
     fn handle_operator(&mut self, operator: char) -> Result<(), &'static str> {
-        if self.operator_stack.last() == Some(&'(') {
-            self.operator_stack.push(operator);
-            return Ok(());
-        }
-
         while self.should_pop_from_operator_stack(operator) {
             match self.operator_stack.pop() {
                 Some(op) => self.parse_operator_to_nfa(op)?,
@@ -660,6 +655,9 @@ impl<'a> NFABuilder<'a> {
     /// Should we pop from the operator stack before adding the new operator?
     fn should_pop_from_operator_stack(&self, new_operator: char) -> bool {
         if self.operator_stack.len() == 0 {
+            return false;
+        }
+        if self.operator_stack.last() == Some(&'(') {
             return false;
         }
 

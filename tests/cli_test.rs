@@ -77,3 +77,19 @@ somesite.xyz/example.co
     drop(test_file);
     test_dir.close().unwrap();
 }
+
+#[test]
+fn grouping_vs_alteration_precedence() {
+    let command_with_grouping = Command::cargo_bin("fst").unwrap()
+        .arg("(version|checksum) =")
+        .arg("Cargo.lock")
+        .output()
+        .unwrap();
+    let command_without_grouping = Command::cargo_bin("fst").unwrap()
+        .arg("version|checksum =")
+        .arg("Cargo.lock")
+        .output()
+        .unwrap();
+
+    assert_eq!(command_with_grouping.stdout, command_without_grouping.stdout);
+}
