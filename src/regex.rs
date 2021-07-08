@@ -122,12 +122,7 @@ fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
     let mut previous_char: Option<char> = None;
     let mut regex_char_indices = regex.char_indices();
 
-    loop {
-        let character_and_index_or_none = regex_char_indices.next();
-        if character_and_index_or_none.is_none() { break; }
-
-        let (char_byte_index, character) = character_and_index_or_none.unwrap();
-
+    while let Some((char_byte_index, character)) = regex_char_indices.next() {
         // Determine if the current character should be concatenated
         // with the previous. If so we temporarily act as if we were
         // looking at a concatenation character (~). Since in infix
