@@ -35,7 +35,7 @@ example.com/assets/image.png
 example.com/api?some=arg
 ");
 
-    // Check that the different operations work as expacted.
+    // Check that the different operations work as expected.
     Command::cargo_bin("fst").unwrap()
         .arg("-o")
         .arg("m")
