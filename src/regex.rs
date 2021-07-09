@@ -8,7 +8,6 @@
 use std::str;
 use std::vec::Vec;
 use std::fmt;
-use std::collections::HashSet;
 use std::mem;
 
 /// A regular expression string, and functions to match a string to it.
@@ -239,8 +238,9 @@ impl<'a> NFA<'a> {
         let register: &StateRegister = &self.state_register;
 
         // Current states the NFA is in.
-        // A hash set since it should not contain the same state twice.
-        let mut current: HashSet<usize> = HashSet::new();
+        // Even though it should not contain the same state twice a
+        // vec is more preformant than a hash-set.
+        let mut current: Vec<usize> = Vec::new();
         insert_or_follow_split(
             &mut current,
             register.get_state(self.start_state),
@@ -249,7 +249,7 @@ impl<'a> NFA<'a> {
         );
 
         // States the NFA will be in after the current character
-        let mut next: HashSet<usize> = HashSet::new();
+        let mut next: Vec<usize> = Vec::new();
 
         // Char byte index of the character after the longest matching
         // substring found this far.
@@ -257,12 +257,11 @@ impl<'a> NFA<'a> {
 
         // Follow the first out arrow of a state and insert the state
         // at the end of it into the next states.
-        // The hash set guarantees this does not insert the
-        // state if it is already in `next`.
         // Any split will be followed and the output
         // states of that split will be added instead.
+        // TODO: Is it worth it to check if the state is already in next?
         fn follow_first_out_arrow(state: &State,
-                                  next: &mut HashSet<usize>,
+                                  next: &mut Vec<usize>,
                                   register: &StateRegister) {
             let next_state_id = state.out[0].unwrap();
             let next_state = register.get_state(next_state_id);
@@ -807,7 +806,7 @@ fn precedence(regex_operator: char) -> usize {
 /// Insert the state id of a state into `into`, unless the state is a split.
 /// For a split follow the out arrows and call this function recursively on
 /// the states they point to.
-fn insert_or_follow_split(into: &mut HashSet<usize>, state: &State, state_id: usize, register: &StateRegister) {
+fn insert_or_follow_split(into: &mut Vec<usize>, state: &State, state_id: usize, register: &StateRegister) {
     if let StateType::Split = state.state_type {
         // `flat_map` to filter out `None` arrows
         for state_out_id in state.out.iter().flat_map(|id| *id) {
@@ -819,7 +818,7 @@ fn insert_or_follow_split(into: &mut HashSet<usize>, state: &State, state_id: us
         }
     }
     else {
-        into.insert(state_id);
+        into.push(state_id);
     }
 }
 
