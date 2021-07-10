@@ -25,7 +25,7 @@ somesite.xyz/example.com").unwrap();
 
     // Regex search
     Command::cargo_bin("fst").unwrap()
-        .arg("^[^/]*example\\.com(/.*)*$")
+        .arg(r"^[^/]*example\.com(/.*)*$")
         .arg(&test_file_path)
         .assert()
         .success()
@@ -57,7 +57,7 @@ example.com/api?some=arg
     Command::cargo_bin("fst").unwrap()
         .arg("-o")
         .arg("ip")
-        .arg("^[^/]*example\\.com(/.*)*$")
+        .arg(r"^[^/]*example\.com(/.*)*$")
         .arg(&test_file_path)
         .assert()
         .success()
@@ -68,7 +68,7 @@ somesite.xyz/example.co
     Command::cargo_bin("fst").unwrap()
         .arg("-o")
         .arg("c")
-        .arg("^[^/]*example\\.com(/.*)*$")
+        .arg(r"^[^/]*example\.com(/.*)*$")
         .arg(&test_file_path)
         .assert()
         .success()

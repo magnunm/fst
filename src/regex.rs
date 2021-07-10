@@ -977,7 +977,7 @@ mod tests {
     #[test]
     fn test_regex_nfa_matching_4() -> Result<(), &'static str> {
         // Test escaping
-        let regex: &str = "(\\.\\*)+";  // One or more literal .*
+        let regex: &str = r"(\.\*)+";  // One or more literal .*
         let nfa = regex_to_nfa(regex)?;
 
         assert_eq!(nfa.simulate(".*.*.*.*", true), 8);
