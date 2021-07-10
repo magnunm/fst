@@ -16,7 +16,7 @@ pub struct Regex<'a> {
 
     // The NFA constructed from the regex and used internally for matching.
     nfa: NFA<'a>,
-    // Wether or not the regex started with a caret (^) and/or ends with a
+    // Whether or not the regex started with a caret (^) and/or ends with a
     // dollar ($).
     from_start: bool,
     until_end: bool,
