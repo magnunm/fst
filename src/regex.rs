@@ -8,7 +8,6 @@
 use std::str;
 use std::vec::Vec;
 use std::fmt;
-use std::mem;
 
 /// A regular expression string, and functions to match a string to it.
 pub struct Regex<'a> {
@@ -223,131 +222,171 @@ struct NFA<'a> {
 }
 
 impl<'a> NFA<'a> {
-    /// Run the NFA with a given input string.
+    /// Simulate the NFA with a given input string.
     ///
     /// The simulation can be in multiple NFA states at the same time.
-    /// Returns the character byte index of the first character after the
-    /// string that matches the pattern. A return value of 0 means there
-    /// was no match at all.
     /// `greedy` controls wether or not we will match the tail of the
     /// regex greedily or not. If true the returned byte index will be
     /// the first character after the longest matching substring in
     /// `input`, if `false` it will be the index after the shortest
     /// matching substring in `input`.
     fn simulate(&self, input: &str, greedy: bool) -> usize {
-        let register: &StateRegister = &self.state_register;
-
-        // Current states the NFA is in.
-        // Even though it should not contain the same state twice a
-        // vec is more preformant than a hash-set.
-        let mut current: Vec<usize> = Vec::new();
-        insert_or_follow_split(
-            &mut current,
-            register.get_state(self.start_state),
-            self.start_state,
-            register
-        );
-
-        // States the NFA will be in after the current character
-        let mut next: Vec<usize> = Vec::new();
+        let mut simulation = NFASimulation::new(&self);
 
         // Char byte index of the character after the longest matching
         // substring found this far.
-        let mut largest_matching_char_index: usize = 0;
-
-        // Follow the first out arrow of a state and insert the state
-        // at the end of it into the next states.
-        // Any split will be followed and the output
-        // states of that split will be added instead.
-        // TODO: Is it worth it to check if the state is already in next?
-        fn follow_first_out_arrow(state: &State,
-                                  next: &mut Vec<usize>,
-                                  register: &StateRegister) {
-            let next_state_id = state.out[0].unwrap();
-            let next_state = register.get_state(next_state_id);
-
-            insert_or_follow_split(
-                next, next_state, next_state_id, register
-            );
-        }
+        let mut first_non_matching_char_index: usize = 0;
 
         for (byte_index, character) in input.char_indices() {
-            // Use the current states to compute the next states given the
-            // character in the input string
-            for state_id in current.iter() {
-                let state: &State = register.get_state(*state_id);
+            simulation.update_states(character);
 
-                match &state.state_type {
-                    StateType::Match => {
-                        // Already in the match state.
-                        // If we are matching greedily we should store the
-                        // char index as the largest found yet and continue to
-                        // iterate the input chars.
-                        // If not matching greedily we don't need to iterate
-                        // further, as this is already the shortest matching
-                        // substring.
-                        if greedy {
-                            largest_matching_char_index = byte_index;
-                        }
-                        else {
-                            return byte_index;
-                        }
-                    },
-                    // Literal: follow out if current matches literal's char
-                    StateType::Literal(c) => {
-                        if *c == character {
-                            follow_first_out_arrow(state, &mut next, register);
-                        }
-                    },
-                    // With a dot state we follow the output arrow
-                    // regardless of what the current character is
-                    StateType::Dot => {
-                        follow_first_out_arrow(state, &mut next, register);
-                    },
-                    // With a bracket state we follow the output arrow if
-                    // the current character matches the bracket.
-                    StateType::Bracket(bracketed) => {
-                        if matches_bracket(character, bracketed) {
-                            follow_first_out_arrow(state, &mut next, register);
-                        }
-                    },
-                    StateType::Split => {
-                        // We should never reach a split here. That is the job of
-                        // `insert_or_follow_split` to ensure.
-                        panic!("Unexpected split found in `current`!");
-                    }
+            if simulation.in_match_state {
+                // TODO: UTF-16?
+                first_non_matching_char_index = byte_index + character.len_utf8();
+
+                if !greedy {
+                    return first_non_matching_char_index;
                 }
             }
 
-            // If `next` is empty there is no need to continue
-            // iterating over the characters. If matching greedily we
-            // might have encountered a match already, so we should
-            // return the index of that. If not this return will
-            // correctly be zero.
-            if next.is_empty() {
-                return largest_matching_char_index;
-            }
-
-            // Next becomes the new current, and the new next is initialized.
-            mem::swap(&mut current, &mut next);
-            next.clear();
-        }
-
-        // If the current states contain the match state after all characters
-        // are iterated over then we have a match.
-        // Matching greedily this means we match the entire string, so return
-        // the byte lenght of the string. Getting here not matching greedily
-        // means we only now have a match, so the output is the same.
-        for state in current {
-            match register.get_state(state).state_type {
-                StateType::Match => { return input.len(); },
-                _ => ()
+            // If there are no surviving states there is no need to
+            // continue iterating over the characters.
+            if simulation.current_states.is_empty() {
+                return first_non_matching_char_index;
             }
         }
-        // If not we might still have encountered a match earlier if we were
-        // matching greedily. Not matching greedily this will correctly return
-        // zero.
-        return largest_matching_char_index;
+
+        return first_non_matching_char_index;
+    }
+}
+
+struct NFASimulation<'a> {
+    nfa: &'a NFA<'a>,
+    // Current states the NFA simulation is in.
+    // Even though it should not contain the same state twice a
+    // vec is more preformant than a hash-set.
+    current_states: Vec<usize>,
+    // Has the match state been reached?
+    in_match_state: bool
+}
+
+impl<'a> NFASimulation<'a> {
+    fn new(nfa: &'a NFA) -> NFASimulation<'a> {
+        let mut new_simulation = NFASimulation {
+            nfa,
+            current_states: Vec::new(),
+            in_match_state: false
+        };
+
+        // Initialize the current states of the simulation with the
+        // starting states
+        let mut inital_states = NFASimulationNextStates::new(nfa);
+        inital_states.insert_or_follow_split(
+            nfa.state_register.get_state(nfa.start_state),
+            nfa.start_state
+        );
+        new_simulation.current_states = inital_states.states;
+        new_simulation.in_match_state = inital_states.contains_match_state;
+
+        new_simulation
+    }
+
+    /// Use the current states to compute the next states given the
+    /// character.
+    fn update_states(&mut self, character: char) {
+        let mut next_states = NFASimulationNextStates::new(self.nfa);
+
+        for state_id in self.current_states.iter() {
+            let state: &State = self.nfa.state_register.get_state(*state_id);
+            next_states.update(state, character);
+        }
+
+        self.current_states = next_states.states;
+        self.in_match_state = next_states.contains_match_state;
+    }
+}
+
+struct NFASimulationNextStates<'a> {
+    nfa: &'a NFA<'a>,
+    states: Vec<usize>,
+    contains_match_state: bool
+}
+
+impl<'a> NFASimulationNextStates<'a> {
+    fn new(nfa: &'a NFA) -> NFASimulationNextStates<'a> {
+        NFASimulationNextStates {
+            nfa,
+            states: Vec::new(),
+            contains_match_state: false
+        }
+    }
+
+    /// Update the list of next states with the states reached by
+    /// reading `character` in the given `state`.
+    fn update(&mut self, state: &State, character: char) {
+        match &state.state_type {
+            // Literal: follow out if current matches literal's char
+            StateType::Literal(c) => {
+                if *c == character {
+                     self.follow_first_out_arrow(state);
+                }
+            },
+            // With a dot state we follow the output arrow
+            // regardless of what the current character is
+            StateType::Dot => {
+                self.follow_first_out_arrow(state);
+            },
+            // With a bracket state we follow the output arrow if
+            // the current character matches the bracket.
+            StateType::Bracket(bracketed) => {
+                if matches_bracket(character, bracketed) {
+                    self.follow_first_out_arrow(state);
+                }
+            },
+            StateType::Split => {
+                // We should never reach a split here. The job of
+                // `insert_or_follow_split` is to handle those.
+                panic!("Unexpected `Split` passed to `update`!");
+            }
+            StateType::Match => {
+                // `insert_of_follow_split` also handles match states.
+                panic!("Unexpected `Match` passed to `update`!");
+            },
+        }
+    }
+
+    /// Follow the first out arrow of a state and insert the state at
+    /// the end of it into the next states. Any split will be followed
+    /// and the output states of that split will be added instead.
+    /// TODO: Is it worth it to check if the state is already in next?
+    fn follow_first_out_arrow(&mut self, state: &State){
+        let next_state_id = state.out[0].unwrap();
+        let next_state = self.nfa.state_register.get_state(next_state_id);
+        self.insert_or_follow_split(next_state, next_state_id);
+    }
+
+    /// Insert the state id into the list of next states, unless:
+    /// - A split state: follow the out arrows and recurse
+    /// - A match state
+    fn insert_or_follow_split(&mut self, state: &State, state_id: usize) {
+        match state.state_type {
+            StateType::Split => {
+                // `flat_map` to filter out `None` arrows
+                for state_out_id in state.out.iter().flat_map(|id| *id) {
+                    let state_out: &State = self.nfa.state_register.get_state(state_out_id);
+
+                    self.insert_or_follow_split(
+                        state_out, state_out_id
+                    );
+                }
+            },
+            StateType::Match => {
+                self.contains_match_state = true;
+            }
+            _ => {
+                self.states.push(state_id);
+            }
+        }
     }
 }
 
@@ -800,25 +839,6 @@ fn precedence(regex_operator: char) -> usize {
         '+' => 4,  // One or more
         '?' => 4,  // Zero or one
         _ => { panic!("Invalid regex operator") }
-    }
-}
-
-/// Insert the state id of a state into `into`, unless the state is a split.
-/// For a split follow the out arrows and call this function recursively on
-/// the states they point to.
-fn insert_or_follow_split(into: &mut Vec<usize>, state: &State, state_id: usize, register: &StateRegister) {
-    if let StateType::Split = state.state_type {
-        // `flat_map` to filter out `None` arrows
-        for state_out_id in state.out.iter().flat_map(|id| *id) {
-            let state_out: &State = register.get_state(state_out_id);
-
-            insert_or_follow_split(
-                into, state_out, state_out_id, register
-            );
-        }
-    }
-    else {
-        into.push(state_id);
     }
 }
 
