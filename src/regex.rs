@@ -296,7 +296,7 @@ impl<'a> NFASimulation<'a> {
     fn update_states(&mut self, character: char) {
         let mut next_states = NFASimulationNextStates::new(self.nfa);
 
-        for state_id in self.current_states.iter() {
+        for state_id in &self.current_states {
             let state: &State = self.nfa.state_register.get_state(*state_id);
             next_states.update(state, character);
         }
@@ -371,7 +371,7 @@ impl<'a> NFASimulationNextStates<'a> {
     fn insert_or_follow_split(&mut self, state: &State, state_id: usize) {
         match state.state_type {
             StateType::Split => {
-                // `flat_map` to filter out `None` arrows
+                // Filter out `None` arrows
                 for state_out_id in state.out.iter().flat_map(|id| *id) {
                     let state_out: &State = self.nfa.state_register.get_state(state_out_id);
 
