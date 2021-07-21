@@ -21,10 +21,6 @@ fn main() -> io::Result<()> {
              .short("c")
              .long("color")
              .help("Enable colors"))
-        .arg(Arg::with_name("lazy")
-             .short("l")
-             .long("lazy")
-             .help("Match the tail of the regex lazily. Somewhat faster."))
         .arg(Arg::with_name("operation")
              .short("o")
              .long("operation")
@@ -34,8 +30,7 @@ fn main() -> io::Result<()> {
         .get_matches();
 
     let pattern = matches.value_of("PATTERN").unwrap();
-    let greedy = !matches.is_present("lazy");
-    let regex = match regex::Regex::new(&pattern, greedy) {
+    let regex = match regex::Regex::new(&pattern) {
         Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidInput, e)),
         Ok(r) => r
     };

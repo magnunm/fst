@@ -132,7 +132,8 @@ impl<'a> NFA<'a> {
     /// the first character after the longest matching substring in
     /// `input`, if `false` it will be the index after the shortest
     /// matching substring in `input`.
-    pub fn simulate(&self, input: &str, greedy: bool) -> usize {
+    /// If no match returns `None`.
+    pub fn simulate(&self, input: &str, greedy: bool) -> Option<usize> {
         let mut simulation = NFASimulation::new(&self);
 
         // Char byte index of the character after the longest matching
@@ -147,18 +148,24 @@ impl<'a> NFA<'a> {
                 first_non_matching_char_index = byte_index + character.len_utf8();
 
                 if !greedy {
-                    return first_non_matching_char_index;
+                    return Some(first_non_matching_char_index);
                 }
             }
 
             // If there are no surviving states there is no need to
             // continue iterating over the characters.
             if simulation.current_states.is_empty() {
-                return first_non_matching_char_index;
+                if first_non_matching_char_index > 0 {
+                    return Some(first_non_matching_char_index);
+                }
+                return None;
             }
         }
 
-        return first_non_matching_char_index;
+        if simulation.in_match_state || first_non_matching_char_index > 0 {
+            return Some(first_non_matching_char_index);
+        }
+        return None;
     }
 }
 
@@ -836,11 +843,11 @@ mod tests {
         let regex: &str = "(a|⻘)c";
         let nfa = regex_to_nfa(regex)?;
 
-        assert_eq!(nfa.simulate("ac", false), 2);
-        assert_eq!(nfa.simulate("⻘c", false), "⻘c".len());
-        assert_eq!(nfa.simulate("a", false), 0);  // Missing c
-        assert_eq!(nfa.simulate("c", false), 0);  // Missing first char
-        assert_eq!(nfa.simulate("xc", false), 0);  // Wrong first char
+        assert_eq!(nfa.simulate("ac", false), Some(2));
+        assert_eq!(nfa.simulate("⻘c", false), Some("⻘c".len()));
+        assert_eq!(nfa.simulate("a", false), None);  // Missing c
+        assert_eq!(nfa.simulate("c", false), None);  // Missing first char
+        assert_eq!(nfa.simulate("xc", false), None);  // Wrong first char
         Ok(())
     }
 
@@ -850,14 +857,14 @@ mod tests {
         let regex: &str = "(a|b)*c+";
         let nfa = regex_to_nfa(regex)?;
 
-        assert_eq!(nfa.simulate("ac", false), 2);
-        assert_eq!(nfa.simulate("c", false), 1);
-        assert_eq!(nfa.simulate("aaaac", false), 5);
-        assert_eq!(nfa.simulate("accccc", false), 2);  // 2 not greedy
-        assert_eq!(nfa.simulate("bc", false), 2);
-        assert_eq!(nfa.simulate("abc", false), 3);  // Both characters allowed in zero or more
-        assert_eq!(nfa.simulate("b", false), 0);  // Too few c
-        assert_eq!(nfa.simulate("", false), 0);  // Too few c
+        assert_eq!(nfa.simulate("ac", false), Some(2));
+        assert_eq!(nfa.simulate("c", false), Some(1));
+        assert_eq!(nfa.simulate("aaaac", false), Some(5));
+        assert_eq!(nfa.simulate("accccc", false), Some(2));  // 2 not greedy
+        assert_eq!(nfa.simulate("bc", false), Some(2));
+        assert_eq!(nfa.simulate("abc", false), Some(3));  // Both characters allowed in zero or more
+        assert_eq!(nfa.simulate("b", false), None);  // Too few c
+        assert_eq!(nfa.simulate("", false), None);  // Too few c
         Ok(())
     }
 
@@ -867,12 +874,12 @@ mod tests {
         let regex: &str = ".*a[0-9]+";  // Any string that ends in `a` + number
         let nfa = regex_to_nfa(regex)?;
 
-        assert_eq!(nfa.simulate("a2021", true), 5);
-        assert_eq!(nfa.simulate("åa9", true), "åa9".len());
-        assert_eq!(nfa.simulate("教育漢字a0", true), "教育漢字a0".len());
-        assert_eq!(nfa.simulate("b", true), 0);
-        assert_eq!(nfa.simulate("a", true), 0);
-        assert_eq!(nfa.simulate("aO", true), 0);
+        assert_eq!(nfa.simulate("a2021", true), Some(5));
+        assert_eq!(nfa.simulate("åa9", true), Some("åa9".len()));
+        assert_eq!(nfa.simulate("教育漢字a0", true), Some("教育漢字a0".len()));
+        assert_eq!(nfa.simulate("b", true), None);
+        assert_eq!(nfa.simulate("a", true), None);
+        assert_eq!(nfa.simulate("aO", true), None);
         Ok(())
     }
 
@@ -882,13 +889,13 @@ mod tests {
         let regex: &str = r"(\.\*)+";  // One or more literal .*
         let nfa = regex_to_nfa(regex)?;
 
-        assert_eq!(nfa.simulate(".*.*.*.*", true), 8);
-        assert_eq!(nfa.simulate(".*.*.*.*", false), 2);
-        assert_eq!(nfa.simulate(".*", false), 2);
-        assert_eq!(nfa.simulate(".", false), 0);
-        assert_eq!(nfa.simulate("a", false), 0);
-        assert_eq!(nfa.simulate("\\.\\*", false), 0);
-        assert_eq!(nfa.simulate("\\.", false), 0);
+        assert_eq!(nfa.simulate(".*.*.*.*", true), Some(8));
+        assert_eq!(nfa.simulate(".*.*.*.*", false), Some(2));
+        assert_eq!(nfa.simulate(".*", false), Some(2));
+        assert_eq!(nfa.simulate(".", false), None);
+        assert_eq!(nfa.simulate("a", false), None);
+        assert_eq!(nfa.simulate("\\.\\*", false), None);
+        assert_eq!(nfa.simulate("\\.", false), None);
         Ok(())
     }
 
@@ -898,12 +905,12 @@ mod tests {
         let regex: &str = "a(b|c)";
         let nfa = regex_to_nfa(regex)?;
 
-        assert_eq!(nfa.simulate("ab", false), 2);
-        assert_eq!(nfa.simulate("ac", false), 2);
-        assert_eq!(nfa.simulate("abx", false), 2);
-        assert_eq!(nfa.simulate("a", false), 0);
-        assert_eq!(nfa.simulate("aa", false), 0);
-        assert_eq!(nfa.simulate("", false), 0);
+        assert_eq!(nfa.simulate("ab", false), Some(2));
+        assert_eq!(nfa.simulate("ac", false), Some(2));
+        assert_eq!(nfa.simulate("abx", false), Some(2));
+        assert_eq!(nfa.simulate("a", false), None);
+        assert_eq!(nfa.simulate("aa", false), None);
+        assert_eq!(nfa.simulate("", false), None);
         Ok(())
     }
 
@@ -914,13 +921,25 @@ mod tests {
         let regex: &str = "a*ø?⻘+";
         let nfa = regex_to_nfa(regex)?;
 
-        assert_eq!(nfa.simulate("a⻘", false), "a⻘".len());
-        assert_eq!(nfa.simulate("aø⻘", false), "aø⻘".len());
-        assert_eq!(nfa.simulate("⻘", false), "⻘".len());
-        assert_eq!(nfa.simulate("ø⻘", false), "ø⻘".len());
-        assert_eq!(nfa.simulate("aaaaaaaaaaaa⻘⻘⻘⻘⻘⻘", false), "aaaaaaaaaaaa⻘".len());
-        assert_eq!(nfa.simulate("aøø⻘", false), 0);  // Too many ø
-        assert_eq!(nfa.simulate("aø", false), 0);  // Too few ⻘
+        assert_eq!(nfa.simulate("a⻘", false), Some("a⻘".len()));
+        assert_eq!(nfa.simulate("aø⻘", false), Some("aø⻘".len()));
+        assert_eq!(nfa.simulate("⻘", false), Some("⻘".len()));
+        assert_eq!(nfa.simulate("ø⻘", false), Some("ø⻘".len()));
+        assert_eq!(nfa.simulate("aaaaaaaaaaaa⻘⻘⻘⻘⻘⻘", false), Some("aaaaaaaaaaaa⻘".len()));
+        assert_eq!(nfa.simulate("aøø⻘", false), None);  // Too many ø
+        assert_eq!(nfa.simulate("aø", false), None);  // Too few ⻘
+        Ok(())
+    }
+
+    #[test]
+    fn test_regex_nfa_matching_7() -> Result<(), &'static str> {
+        // Test detection of a match on the empty string.
+        let regex: &str = "a*";
+        let nfa = regex_to_nfa(regex)?;
+
+        assert_eq!(nfa.simulate("a", false), Some(1));
+        assert_eq!(nfa.simulate("", false), Some(0));
+        assert_eq!(nfa.simulate("b", false), None);
         Ok(())
     }
 }
