@@ -13,6 +13,8 @@ use std::fmt;
 /// where the "would be" a concatenation character in the postifix
 /// notation.
 pub fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
+    check_for_invalid(regex)?;
+
     let mut nfa_builder = NFABuilder {
         register: StateRegister::new(),
         fragment_stack: Vec::new(),
@@ -814,6 +816,14 @@ fn matches_bracket(character: char, bracketed_expression: &str) -> bool {
         return !result;
     }
     result
+}
+
+fn check_for_invalid(regex: &str) -> Result<(), &'static str> {
+    if regex == "" {
+        return Err("Empty regex pattern not supported");
+    }
+    // TODO: Add more checks.
+    Ok(())
 }
 
 /// Is a character in the given character range.
