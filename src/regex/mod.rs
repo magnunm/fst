@@ -1,15 +1,10 @@
 /// Regular expressions string matching by converting the regular expression to
 /// a NFA (non-deterministic finite automaton).
-///
-/// Works by first converting the regular expression to postfix notation and
-/// then applying Thompson's construction to that expression.
-/// The NFA is represented by states in a state register, to simulate the
-/// NFA we need this and the id of the start state of the NFA.
 use std::str;
 
 mod nfa;
 
-/// A regular expression string, and functions to match a string to it.
+/// A regular expression string, and functions to match a input string to it.
 pub struct Regex<'a> {
     pub regex: &'a str,
 
