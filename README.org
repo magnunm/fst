@@ -1,7 +1,7 @@
 #+TITLE: fst
 
 A command line tool for plain text searching and processing.
-The aim of this project is simply to learn and become better at [[https://www.rust-lang.org/][rust]].
+The aim of this project is to learn and become better at [[https://www.rust-lang.org/][rust]].
 Therefore the regular expression support is implemented from scratch, instead of relying on the excellent [[https://crates.io/crates/regex][regex]] crate.
 There are many faster and better implementations with the same functionality and more, for example [[https://github.com/BurntSushi/ripgrep][ripgrep]].
 
