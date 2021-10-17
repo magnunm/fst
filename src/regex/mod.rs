@@ -28,10 +28,10 @@ impl<'a> Regex<'a> {
         let mut start_index_stripped_regex: usize = 0;
         let mut end_index_stripped_regex: usize = regex.len();
         if starts_with_caret {
-            start_index_stripped_regex = 1;  // '^'.len_utf8() == 1
+            start_index_stripped_regex = '^'.len_utf8();
         }
         if ends_with_dollar {
-            end_index_stripped_regex -= 1;  // '$'.len_utf8() == 1
+            end_index_stripped_regex -= '$'.len_utf8();
         }
 
         let stripped_regex = &regex[start_index_stripped_regex..end_index_stripped_regex];
