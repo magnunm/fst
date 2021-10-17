@@ -128,7 +128,7 @@ impl<'a> Regex<'a> {
             }
 
             let index_after_nfa_match = input_for_nfa_start + relative_result.1;
-            if self.tail_lenght_substring_after(input, index_after_nfa_match) == self.literal_string_tail {
+            if self.tail_lenght_substring_after(input, index_after_nfa_match) == Some(self.literal_string_tail) {
                 break;
             }
 
@@ -176,8 +176,12 @@ impl<'a> Regex<'a> {
         Some(0) // The empty regex matches the empty string
     }
 
-    fn tail_lenght_substring_after(&self, input: &'a str, index: usize) -> &'a str {
-        return &input[index..(index + self.literal_string_tail.len())];
+    fn tail_lenght_substring_after(&self, input: &'a str, index: usize) -> Option<&'a str> {
+        // Assumes &input[index] is at a char boundary
+        if input.is_char_boundary(index + self.literal_string_tail.len()) {
+            return Some(&input[index..(index + self.literal_string_tail.len())]);
+        }
+        None
     }
 
     fn has_literal_string_tail(&self) -> bool {
@@ -326,6 +330,22 @@ mod tests {
         assert_eq!(regex.match_substring("Contains a testcase"),
                    ("Contains ".len(), "Contains a testcase".len()));
         assert_eq!(regex.match_substring("Some other string"),
+                   (0, 0));
+        Ok(())
+    }
+
+    // What happens in this check is that the `match_substring`
+    // finds the final `estcase` and sets that as the end of
+    // matching. Then it sees the `T` matches the nfa and goes on
+    // to check if the len_bytes(estcase) next bytes matches
+    // `estcase`. len_bytes(estcase) puts us not at a code point
+    // boundary. That is no reason for the code to panic however,
+    // it simply means there is no match.
+    #[test]
+    fn test_tail_literal_spawns_check_not_at_char_boundary() -> Result<(), &'static str> {
+        let regex = Regex::new("(T|t)estcase")?;
+
+        assert_eq!(regex.match_substring("Testcas教 estcase"),
                    (0, 0));
         Ok(())
     }
