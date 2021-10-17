@@ -44,28 +44,9 @@ fn main() -> io::Result<()> {
     let operation = matches.value_of("operation").unwrap_or("p");
     let operation_func = get_operation_func(operation)?;
 
-    let recursive = matches.is_present("recursive");
-    if recursive {
+    if matches.is_present("recursive") {
         let directory_name = matches.value_of("FILE").unwrap_or(".");
-        for entry in WalkDir::new(directory_name)
-            .follow_links(true)
-            .into_iter()
-            .filter_entry(|e| !is_hidden(e))
-            .filter_map(Result::ok)
-            .filter(|e| !e.file_type().is_dir()) {
-                let path = entry.path().to_str().unwrap();
-                let file = File::open(&path)?;
-                let mut reader: Box<dyn BufRead> = Box::new(BufReader::new(file));
-                let prefix = &format!("{}:", path);
-                let count = apply_operation_to_reader(
-                    &mut reader,
-                    &regex,
-                    operation_func,
-                    color,
-                    prefix,
-                )?;
-                if operation == "c" && count > 0 { println!("{} {}", prefix, count);}
-            }
+        recursive_search(directory_name, &regex, operation_func, operation, color)?;
         return Ok(());
     }
 
@@ -82,6 +63,35 @@ fn main() -> io::Result<()> {
     let count = apply_operation_to_reader(&mut reader, &regex, operation_func, color, "")?;
     if operation == "c" { println!("{}", count);}
 
+    Ok(())
+}
+
+fn recursive_search(
+    directory_name: &str,
+    regex: &regex::Regex,
+    operation_func: fn(&str, usize, usize, usize, bool, &str) -> (),
+    operation: &str,
+    color: bool,
+) -> io::Result<()> {
+    for entry in WalkDir::new(directory_name)
+        .follow_links(true)
+        .into_iter()
+        .filter_entry(|e| !is_hidden(e))
+        .filter_map(Result::ok)
+        .filter(|e| !e.file_type().is_dir()) {
+            let path = entry.path().to_str().unwrap();
+            let file = File::open(&path)?;
+            let mut reader: Box<dyn BufRead> = Box::new(BufReader::new(file));
+            let prefix = &format!("{}:", path);
+            let count = apply_operation_to_reader(
+                &mut reader,
+                regex,
+                operation_func,
+                color,
+                prefix,
+            )?;
+            if operation == "c" && count > 0 { println!("{} {}", prefix, count);}
+        }
     Ok(())
 }
 
