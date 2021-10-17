@@ -79,6 +79,19 @@ somesite.xyz/example.co
 }
 
 #[test]
+fn recursive() {
+    // Search for a random string, so the only match is in this file
+    let find_me = "yLZLdG67QJAuVycOuwXo";
+    Command::cargo_bin("fst").unwrap()
+        .arg("-r")
+        .arg(find_me)
+        .arg("tests")
+        .assert()
+        .success()
+        .stdout(format!("tests/cli_test.rs:    let find_me = \"{}\";\n", find_me));
+}
+
+#[test]
 fn grouping_vs_alteration_precedence() {
     let command_with_grouping = Command::cargo_bin("fst").unwrap()
         .arg("(version|checksum) =")

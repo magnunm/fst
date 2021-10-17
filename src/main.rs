@@ -1,5 +1,6 @@
 use std::io::{self, BufReader, BufRead};
 use std::fs::File;
+use walkdir::{DirEntry, WalkDir};
 
 use clap::{Arg, App};
 use ansi_term::Colour::Red;
@@ -15,12 +16,16 @@ fn main() -> io::Result<()> {
              .required(true)
              .index(1))
         .arg(Arg::with_name("FILE")
-             .help("The file to search. If none read stdin.")
+             .help("The file to search. If none read stdin. If recursive search then this is the directory, or current directory if none.")
              .index(2))
         .arg(Arg::with_name("color")
              .short("c")
              .long("color")
              .help("Enable colors"))
+        .arg(Arg::with_name("recursive")
+             .short("r")
+             .long("recursive")
+             .help("Search all files in the directory FILE recursively."))
         .arg(Arg::with_name("operation")
              .short("o")
              .long("operation")
@@ -37,6 +42,29 @@ fn main() -> io::Result<()> {
 
     let color = matches.is_present("color");
     let operation = matches.value_of("operation").unwrap_or("p");
+    let recursive = matches.is_present("recursive");
+
+    if recursive {
+        let directory_name = matches.value_of("FILE").unwrap_or(".");
+        for entry in WalkDir::new(directory_name)
+            .follow_links(true)
+            .into_iter()
+            .filter_entry(|e| !is_hidden(e))
+            .filter_map(Result::ok)
+            .filter(|e| !e.file_type().is_dir()) {
+                let path = entry.path().to_str().unwrap();
+                let file = File::open(&path)?;
+                let mut reader: Box<dyn BufRead> = Box::new(BufReader::new(file));
+                apply_operation_to_reader(
+                    &mut reader,
+                    &regex,
+                    operation,
+                    color,
+                    &format!("{}:", path)
+                )?;
+            }
+        return Ok(());
+    }
 
     let mut reader: Box<dyn BufRead>;
 
@@ -48,12 +76,18 @@ fn main() -> io::Result<()> {
         reader = Box::new(BufReader::new(stdin));
     }
 
-    apply_operation_to_reader(&mut reader, &regex, operation, color)?;
+    apply_operation_to_reader(&mut reader, &regex, operation, color, "")?;
 
     Ok(())
 }
 
-fn apply_operation_to_reader(reader: &mut Box<dyn BufRead>, regex: &regex::Regex, operation: &str, color: bool) -> io::Result<()> {
+fn apply_operation_to_reader(
+    reader: &mut Box<dyn BufRead>,
+    regex: &regex::Regex,
+    operation: &str,
+    color: bool,
+    prepend: &str,
+) -> io::Result<()> {
     let mut line = String::new();
     let mut line_no_newline: &str;
     let mut num_matching_lines = 0;
@@ -66,6 +100,10 @@ fn apply_operation_to_reader(reader: &mut Box<dyn BufRead>, regex: &regex::Regex
         line_no_newline = &line[..(bytes_read - 1)];
 
         let (match_start, match_end) = regex.match_substring(&line_no_newline);
+
+        if match_start != match_end {
+            print!("{}", prepend);
+        }
 
         match operation {
             "p" => print_line_with_match(
@@ -154,4 +192,11 @@ fn print_all_but_matching_substring(
     println!("{}{}",
              &line[..match_start],
              &line[match_end..line_length]);
+}
+
+fn is_hidden(entry: &DirEntry) -> bool {
+    entry.file_name()
+         .to_str()
+         .map(|s| s.starts_with(".") && s != ".")
+         .unwrap_or(false)
 }
