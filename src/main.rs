@@ -35,6 +35,9 @@ fn main() -> io::Result<()> {
         Ok(r) => r
     };
 
+    let color = matches.is_present("color");
+    let operation = matches.value_of("operation").unwrap_or("p");
+
     let mut reader: Box<dyn BufRead>;
 
     if let Some(file_name) = matches.value_of("FILE") {
@@ -45,12 +48,14 @@ fn main() -> io::Result<()> {
         reader = Box::new(BufReader::new(stdin));
     }
 
+    apply_operation_to_reader(&mut reader, &regex, operation, color)?;
+
+    Ok(())
+}
+
+fn apply_operation_to_reader(reader: &mut Box<dyn BufRead>, regex: &regex::Regex, operation: &str, color: bool) -> io::Result<()> {
     let mut line = String::new();
     let mut line_no_newline: &str;
-
-    let color = matches.is_present("color");
-    let operation = matches.value_of("operation").unwrap_or("p");
-
     let mut num_matching_lines = 0;
 
     loop {
@@ -91,7 +96,6 @@ fn main() -> io::Result<()> {
     if operation == "c" {
         println!("{}", num_matching_lines);
     }
-
     Ok(())
 }
 
