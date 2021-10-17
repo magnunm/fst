@@ -42,20 +42,9 @@ fn main() -> io::Result<()> {
 
     let color = !matches.is_present("black-and-white");
     let operation = matches.value_of("operation").unwrap_or("p");
+    let operation_func = get_operation_func(operation)?;
+
     let recursive = matches.is_present("recursive");
-
-    let operation_func: fn(&str, usize, usize, usize, bool, &str) -> ();
-    match operation {
-        "p" => operation_func = print_line_with_match,
-        "ip" => operation_func = print_line_without_match,
-        "m" => operation_func = print_matching_substring,
-        "im" => operation_func = print_all_but_matching_substring,
-        "c" => operation_func = |_, _, _, _, _, _| {},
-        _ => return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("Unsupported operation '{}'", operation)))
-    }
-
     if recursive {
         let directory_name = matches.value_of("FILE").unwrap_or(".");
         for entry in WalkDir::new(directory_name)
@@ -205,6 +194,19 @@ fn print_all_but_matching_substring(
     println!("{}{}",
              &line[..match_start],
              &line[match_end..line_length]);
+}
+
+fn get_operation_func(operation: &str) -> io::Result<fn(&str, usize, usize, usize, bool, &str) -> ()> {
+    return match operation {
+        "p" => Ok(print_line_with_match),
+        "ip" => Ok(print_line_without_match),
+        "m" => Ok(print_matching_substring),
+        "im" => Ok(print_all_but_matching_substring),
+        "c" => Ok(|_, _, _, _, _, _| {}),
+        _ => return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Unsupported operation '{}'", operation)))
+    }
 }
 
 fn is_hidden(entry: &DirEntry) -> bool {
