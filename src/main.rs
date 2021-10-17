@@ -3,7 +3,7 @@ use std::fs::File;
 use walkdir::{DirEntry, WalkDir};
 
 use clap::{Arg, App};
-use ansi_term::Colour::Red;
+use ansi_term::Colour::{Red, Blue};
 
 mod regex;
 
@@ -102,7 +102,11 @@ fn apply_operation_to_reader(
         let (match_start, match_end) = regex.match_substring(&line_no_newline);
 
         if match_start != match_end {
-            print!("{}", prepend);
+            if color {
+                print!("{}", Blue.paint(prepend));
+            } else {
+                print!("{}", prepend);
+            }
         }
 
         match operation {
