@@ -26,6 +26,10 @@ fn main() -> io::Result<()> {
              .short("r")
              .long("recursive")
              .help("Search all files in the directory FILE recursively."))
+        .arg(Arg::with_name("verbose")
+             .short("v")
+             .long("verbose")
+             .help("Verbose error messaging."))
         .arg(Arg::with_name("operation")
              .short("o")
              .long("operation")
@@ -46,7 +50,7 @@ fn main() -> io::Result<()> {
 
     if matches.is_present("recursive") {
         let directory_name = matches.value_of("FILE").unwrap_or(".");
-        recursive_search(directory_name, &regex, operation_func, operation, color)?;
+        recursive_search(directory_name, &regex, operation_func, operation, color, matches.is_present("verbose"))?;
         return Ok(());
     }
 
@@ -72,6 +76,7 @@ fn recursive_search(
     operation_func: fn(&str, usize, usize, usize, bool, &str) -> (),
     operation: &str,
     color: bool,
+    verbose: bool,
 ) -> io::Result<()> {
     for entry in WalkDir::new(directory_name)
         .follow_links(true)
@@ -93,7 +98,7 @@ fn recursive_search(
                 Ok(count) => {
                     if operation == "c" && count > 0 { println!("{} {}", prefix, count);}
                 },
-                Err(message) => println!("Error in {} {}", prefix, message)
+                Err(message) => if verbose {println!("Error in {} {}", prefix, message);}
             }
         }
     Ok(())
