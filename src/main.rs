@@ -158,10 +158,15 @@ fn print_line_without_match(
     match_start: usize,
     match_end: usize,
     line_length: usize,
-    _color: bool,
+    color: bool,
     prepend: &str,
 ) {
     if match_start == match_end {
+        if color {
+                print!("{}", Blue.paint(prepend));
+        } else {
+                print!("{}", prepend);
+            }
         println!("{}", &line[..line_length])
     }
 }
