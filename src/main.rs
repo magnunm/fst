@@ -83,14 +83,18 @@ fn recursive_search(
             let file = File::open(&path)?;
             let mut reader: Box<dyn BufRead> = Box::new(BufReader::new(file));
             let prefix = &format!("{}:", path);
-            let count = apply_operation_to_reader(
+            match apply_operation_to_reader(
                 &mut reader,
                 regex,
                 operation_func,
                 color,
                 prefix,
-            )?;
-            if operation == "c" && count > 0 { println!("{} {}", prefix, count);}
+            ) {
+                Ok(count) => {
+                    if operation == "c" && count > 0 { println!("{} {}", prefix, count);}
+                },
+                Err(message) => println!("Error in {} {}", prefix, message)
+            }
         }
     Ok(())
 }
