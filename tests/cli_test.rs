@@ -17,6 +17,7 @@ somesite.xyz/example.com").unwrap();
 
     // Basic search for substring
     Command::cargo_bin("fst").unwrap()
+        .arg("-b")
         .arg("api")
         .arg(&test_file_path)
         .assert()
@@ -25,6 +26,7 @@ somesite.xyz/example.com").unwrap();
 
     // Regex search
     Command::cargo_bin("fst").unwrap()
+        .arg("-b")
         .arg(r"^[^/]*example\.com(/.*)*$")
         .arg(&test_file_path)
         .assert()
@@ -37,6 +39,7 @@ example.com/api?some=arg
 
     // Check that the different operations work as expected.
     Command::cargo_bin("fst").unwrap()
+        .arg("-b")
         .arg("-o")
         .arg("m")
         .arg("api")
@@ -46,6 +49,7 @@ example.com/api?some=arg
         .stdout("api\n");
 
     Command::cargo_bin("fst").unwrap()
+        .arg("-b")
         .arg("-o")
         .arg("im")
         .arg("api")
@@ -55,6 +59,7 @@ example.com/api?some=arg
         .stdout("example.com/?some=arg\n");
 
     Command::cargo_bin("fst").unwrap()
+        .arg("-b")
         .arg("-o")
         .arg("ip")
         .arg(r"^[^/]*example\.com(/.*)*$")
@@ -66,6 +71,7 @@ somesite.xyz/example.co
 ");  // FIXME: Why is the last "m" removed? Can not reproduce.
 
     Command::cargo_bin("fst").unwrap()
+        .arg("-b")
         .arg("-o")
         .arg("c")
         .arg(r"^[^/]*example\.com(/.*)*$")
@@ -83,6 +89,7 @@ fn recursive() {
     // Search for a random string, so the only match is in this file
     let find_me = "yLZLdG67QJAuVycOuwXo";
     Command::cargo_bin("fst").unwrap()
+        .arg("-b")
         .arg("-r")
         .arg(find_me)
         .arg("tests")
@@ -94,11 +101,13 @@ fn recursive() {
 #[test]
 fn grouping_vs_alteration_precedence() {
     let command_with_grouping = Command::cargo_bin("fst").unwrap()
+        .arg("-b")
         .arg("(version|checksum) =")
         .arg("Cargo.lock")
         .output()
         .unwrap();
     let command_without_grouping = Command::cargo_bin("fst").unwrap()
+        .arg("-b")
         .arg("version|checksum =")
         .arg("Cargo.lock")
         .output()

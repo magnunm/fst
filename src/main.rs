@@ -18,10 +18,10 @@ fn main() -> io::Result<()> {
         .arg(Arg::with_name("FILE")
              .help("The file to search. If none read stdin. If recursive search then this is the directory, or current directory if none.")
              .index(2))
-        .arg(Arg::with_name("color")
-             .short("c")
-             .long("color")
-             .help("Enable colors"))
+        .arg(Arg::with_name("black-and-white")
+             .short("b")
+             .long("black-and-white")
+             .help("Disable colors"))
         .arg(Arg::with_name("recursive")
              .short("r")
              .long("recursive")
@@ -40,7 +40,7 @@ fn main() -> io::Result<()> {
         Ok(r) => r
     };
 
-    let color = matches.is_present("color");
+    let color = !matches.is_present("black-and-white");
     let operation = matches.value_of("operation").unwrap_or("p");
     let recursive = matches.is_present("recursive");
 
