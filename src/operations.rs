@@ -1,10 +1,10 @@
 use ansi_term::Colour::{Blue, Red};
 
-/// An operation to be applies to the lines of the input file. Given the line together with the
+/// An operation to be applied to the lines of the input file. Given the line together with the
 /// start and end of the substring matching the regex pattern.
 pub trait Operation {
     fn apply(
-        &self,
+        &mut self,
         line: &str,
         match_start: usize,
         match_end: usize,
@@ -12,6 +12,10 @@ pub trait Operation {
         color: bool,
         prepend: &str,
     );
+
+    /// For operations that have something to "report" after processing all the lines. Like the
+    /// count operation.
+    fn final_report(&self) -> String;
 }
 
 pub struct PrintMatchingLine;
@@ -19,7 +23,7 @@ pub struct PrintMatchingLine;
 impl Operation for PrintMatchingLine {
     /// Print the given line if it contains a nonempty matching substring.
     fn apply(
-        &self,
+        &mut self,
         line: &str,
         match_start: usize,
         match_end: usize,
@@ -48,6 +52,10 @@ impl Operation for PrintMatchingLine {
         }
         println!("{}", &line[..line_length])
     }
+
+    fn final_report(&self) -> String {
+        String::new()
+    }
 }
 
 pub struct PrintNonMatchingLine;
@@ -55,7 +63,7 @@ pub struct PrintNonMatchingLine;
 impl Operation for PrintNonMatchingLine {
     /// Print the given line if it does not contain a nonempty matching substring.
     fn apply(
-        &self,
+        &mut self,
         line: &str,
         match_start: usize,
         match_end: usize,
@@ -72,6 +80,10 @@ impl Operation for PrintNonMatchingLine {
             println!("{}", &line[..line_length])
         }
     }
+
+    fn final_report(&self) -> String {
+        String::new()
+    }
 }
 
 pub struct PrintMatch;
@@ -79,7 +91,7 @@ pub struct PrintMatch;
 impl Operation for PrintMatch {
     /// Print the mathcing substring of a matching line.
     fn apply(
-        &self,
+        &mut self,
         line: &str,
         match_start: usize,
         match_end: usize,
@@ -97,6 +109,10 @@ impl Operation for PrintMatch {
         }
         println!("{}", &line[match_start..match_end])
     }
+
+    fn final_report(&self) -> String {
+        String::new()
+    }
 }
 
 pub struct PrintExceptMatch;
@@ -104,7 +120,7 @@ pub struct PrintExceptMatch;
 impl Operation for PrintExceptMatch {
     /// Print all but the mathcing substring of a matching line.
     fn apply(
-        &self,
+        &mut self,
         line: &str,
         match_start: usize,
         match_end: usize,
@@ -124,19 +140,32 @@ impl Operation for PrintExceptMatch {
 
         println!("{}{}", &line[..match_start], &line[match_end..line_length]);
     }
+
+    fn final_report(&self) -> String {
+        String::new()
+    }
 }
 
-pub struct Count;
+pub struct Count {
+    pub count: usize,
+}
 
 impl Operation for Count {
     fn apply(
-        &self,
+        &mut self,
         _line: &str,
-        _match_start: usize,
-        _match_end: usize,
+        match_start: usize,
+        match_end: usize,
         _line_length: usize,
         _color: bool,
         _prepend: &str,
     ) {
+        if match_start != match_end {
+            self.count += 1
+        }
+    }
+
+    fn final_report(&self) -> String {
+        self.count.to_string()
     }
 }

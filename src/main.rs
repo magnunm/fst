@@ -45,16 +45,14 @@ fn main() -> io::Result<()> {
     };
 
     let color = !matches.is_present("black-and-white");
-    let operation_str = matches.value_of("operation").unwrap_or("p");
-    let operation = get_operation(operation_str)?;
+    let mut operation = get_operation(matches.value_of("operation").unwrap_or("p"))?;
 
     if matches.is_present("recursive") {
         let directory_name = matches.value_of("FILE").unwrap_or(".");
         recursive_search(
             directory_name,
             &regex,
-            &operation,
-            operation_str,
+            &mut operation,
             color,
             matches.is_present("verbose"),
         )?;
@@ -71,9 +69,11 @@ fn main() -> io::Result<()> {
         reader = Box::new(BufReader::new(stdin));
     }
 
-    let count = apply_operation_to_reader(&mut reader, &regex, &operation, color, "")?;
-    if operation_str == "c" {
-        println!("{}", count);
+    apply_operation_to_reader(&mut reader, &regex, &mut operation, color, "")?;
+
+    let final_report = operation.final_report();
+    if final_report.len() > 0 {
+        println!("{}", operation.final_report());
     }
 
     Ok(())
@@ -82,8 +82,7 @@ fn main() -> io::Result<()> {
 fn recursive_search(
     directory_name: &str,
     regex: &regex::Regex,
-    operation: &Box<dyn operations::Operation>,
-    operation_str: &str,
+    operation: &mut Box<dyn operations::Operation>,
     color: bool,
     verbose: bool,
 ) -> io::Result<()> {
@@ -98,10 +97,12 @@ fn recursive_search(
         let file = File::open(&path)?;
         let mut reader: Box<dyn BufRead> = Box::new(BufReader::new(file));
         let prefix = &format!("{}:", path);
+
         match apply_operation_to_reader(&mut reader, regex, operation, color, prefix) {
-            Ok(count) => {
-                if operation_str == "c" && count > 0 {
-                    println!("{} {}", prefix, count);
+            Ok(()) => {
+                let report = operation.final_report();
+                if report.len() > 0 {
+                    println!("{} {}", prefix, report);
                 }
             }
             Err(message) => {
@@ -117,13 +118,12 @@ fn recursive_search(
 fn apply_operation_to_reader(
     reader: &mut Box<dyn BufRead>,
     regex: &regex::Regex,
-    operation: &Box<dyn operations::Operation>,
+    operation: &mut Box<dyn operations::Operation>,
     color: bool,
     prepend: &str,
-) -> io::Result<i32> {
+) -> io::Result<()> {
     let mut line = String::new();
     let mut line_no_newline: &str;
-    let mut num_matching_lines: i32 = 0;
 
     loop {
         let bytes_read = reader.read_line(&mut line)?;
@@ -135,10 +135,6 @@ fn apply_operation_to_reader(
         line_no_newline = &line[..(bytes_read - 1)];
         let (match_start, match_end) = regex.match_substring(&line_no_newline);
 
-        if match_start != match_end {
-            num_matching_lines += 1;
-        }
-
         operation.apply(
             &line_no_newline,
             match_start,
@@ -149,7 +145,7 @@ fn apply_operation_to_reader(
         );
         line.clear();
     }
-    Ok(num_matching_lines)
+    Ok(())
 }
 
 fn get_operation(operation: &str) -> io::Result<Box<dyn operations::Operation>> {
@@ -158,7 +154,7 @@ fn get_operation(operation: &str) -> io::Result<Box<dyn operations::Operation>> 
         "ip" => Ok(Box::new(operations::PrintNonMatchingLine)),
         "m" => Ok(Box::new(operations::PrintMatch)),
         "im" => Ok(Box::new(operations::PrintExceptMatch)),
-        "c" => Ok(Box::new(operations::Count)),
+        "c" => Ok(Box::new(operations::Count { count: 0 })),
         _ => {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
