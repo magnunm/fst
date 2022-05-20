@@ -55,7 +55,7 @@ impl<'a> Regex<'a> {
             literal_string_tail,
             nfa,
             from_start: starts_with_caret,
-            until_end: ends_with_dollar
+            until_end: ends_with_dollar,
         })
     }
 
@@ -79,8 +79,8 @@ impl<'a> Regex<'a> {
             if byte_index_of_head_literal.is_none() {
                 return (0, 0);
             }
-            input_for_nfa_start = byte_index_of_head_literal.unwrap() +
-                self.literal_string_head.len();
+            input_for_nfa_start =
+                byte_index_of_head_literal.unwrap() + self.literal_string_head.len();
         }
 
         let mut input_for_nfa_end: usize = input.len();
@@ -93,9 +93,9 @@ impl<'a> Regex<'a> {
             input_for_nfa_end = byte_index_of_tail_literal.unwrap();
         }
 
-        if let Some(mut result) = self.match_substring_using_nfa_and_tail(input,
-                                                                          input_for_nfa_start,
-                                                                          input_for_nfa_end) {
+        if let Some(mut result) =
+            self.match_substring_using_nfa_and_tail(input, input_for_nfa_start, input_for_nfa_end)
+        {
             if self.until_end && result.1 != input.len() {
                 return (0, 0);
             }
@@ -107,28 +107,35 @@ impl<'a> Regex<'a> {
         (0, 0)
     }
 
-    fn match_substring_using_nfa_and_tail(&self,
-                                          input: &str,
-                                          mut input_for_nfa_start: usize,
-                                          input_for_nfa_end: usize) -> Option<(usize, usize)> {
+    fn match_substring_using_nfa_and_tail(
+        &self,
+        input: &str,
+        mut input_for_nfa_start: usize,
+        input_for_nfa_end: usize,
+    ) -> Option<(usize, usize)> {
         let mut relative_result;
         loop {
             let input_for_nfa = &input[input_for_nfa_start..input_for_nfa_end];
 
-            let relative_result_or_none =
-                self.nfa_match_substring(input_for_nfa,
-                                         self.from_start || self.has_literal_string_head());
-            if relative_result_or_none.is_none() {  // No match!
+            let relative_result_or_none = self.nfa_match_substring(
+                input_for_nfa,
+                self.from_start || self.has_literal_string_head(),
+            );
+            if relative_result_or_none.is_none() {
+                // No match!
                 return None;
             }
             relative_result = relative_result_or_none.unwrap();
 
-            if !self.has_literal_string_tail() {  // No more checks needed
+            if !self.has_literal_string_tail() {
+                // No more checks needed
                 break;
             }
 
             let index_after_nfa_match = input_for_nfa_start + relative_result.1;
-            if self.tail_lenght_substring_after(input, index_after_nfa_match) == Some(self.literal_string_tail) {
+            if self.tail_lenght_substring_after(input, index_after_nfa_match)
+                == Some(self.literal_string_tail)
+            {
                 break;
             }
 
@@ -142,8 +149,10 @@ impl<'a> Regex<'a> {
             input_for_nfa_start += first_char_len_utf8(input_for_nfa); // TODO: UTF-16
         }
 
-        let mut result = (relative_result.0 + input_for_nfa_start,
-                          relative_result.1 + input_for_nfa_start);
+        let mut result = (
+            relative_result.0 + input_for_nfa_start,
+            relative_result.1 + input_for_nfa_start,
+        );
         // Include matched literal tail in the result range (does nothing if no tail)
         result.1 += self.literal_string_tail.len();
         return Some(result);
@@ -158,7 +167,9 @@ impl<'a> Regex<'a> {
         }
 
         for (byte_index, _) in input.char_indices() {
-            if let Some(relative_match_end) = self.nfa_match_substring_from_start(&input[byte_index..]) {
+            if let Some(relative_match_end) =
+                self.nfa_match_substring_from_start(&input[byte_index..])
+            {
                 return Some((byte_index, byte_index + relative_match_end));
             }
         }
@@ -168,10 +179,7 @@ impl<'a> Regex<'a> {
 
     fn nfa_match_substring_from_start(&self, input: &str) -> Option<usize> {
         if let Some(nfa_inner) = &self.nfa {
-            return nfa_inner.simulate(
-                input,
-                true
-            );
+            return nfa_inner.simulate(input, true);
         }
         Some(0) // The empty regex matches the empty string
     }
@@ -202,12 +210,9 @@ fn non_literal_range(regex: &str) -> (usize, usize) {
         return (start_index_non_literal, start_index_non_literal);
     }
 
-    let end_index_non_literal: usize = regex.len() -
-        first_non_literal_regex_char(&regex
-                                     .chars()
-                                     .rev()
-                                     .collect::<String>());
-    return (start_index_non_literal, end_index_non_literal)
+    let end_index_non_literal: usize =
+        regex.len() - first_non_literal_regex_char(&regex.chars().rev().collect::<String>());
+    return (start_index_non_literal, end_index_non_literal);
 }
 
 fn first_non_literal_regex_char(regex: &str) -> usize {
@@ -236,7 +241,7 @@ fn first_non_literal_regex_char(regex: &str) -> usize {
             break;
         }
 
-        previous_char_size_bytes = character.len_utf8();  // TODO: UTF-16
+        previous_char_size_bytes = character.len_utf8(); // TODO: UTF-16
     }
 
     if regex_char_indices.next().is_none() {
@@ -250,9 +255,7 @@ fn not_part_of_regex_literal(c: char) -> bool {
     // TODO: Backslash can be handled better, the string is
     // still literal but the backslash should be removed
     // in the literal search
-    ['\\', '(', ')', '|'].contains(&c) ||
-        is_regex_operator(c) ||
-        is_regex_character_class(c)
+    ['\\', '(', ')', '|'].contains(&c) || is_regex_operator(c) || is_regex_character_class(c)
 }
 
 fn is_regex_operator(c: char) -> bool {
@@ -282,14 +285,13 @@ mod tests {
         // from the characters 教育漢字 but nothing more.
         let regex = Regex::new("^.*a[0-9]+|教?育?漢?字?$")?;
 
-        assert_eq!(regex.match_substring("lorem ipsum a2021"),
-                   (0, "lorem ipsum a2021".len()));
-        assert_eq!(regex.match_substring("a2021"),
-                   (0, "a2021".len()));
-        assert_eq!(regex.match_substring("教漢"),
-                   (0, "教漢".len()));
-        assert_eq!(regex.match_substring("abc"),
-                   (0, 0));
+        assert_eq!(
+            regex.match_substring("lorem ipsum a2021"),
+            (0, "lorem ipsum a2021".len())
+        );
+        assert_eq!(regex.match_substring("a2021"), (0, "a2021".len()));
+        assert_eq!(regex.match_substring("教漢"), (0, "教漢".len()));
+        assert_eq!(regex.match_substring("abc"), (0, 0));
         Ok(())
     }
 
@@ -297,14 +299,19 @@ mod tests {
     fn test_regex_substring_matching_with_head_literal() -> Result<(), &'static str> {
         let regex = Regex::new("Testcase[0-9]+")?;
 
-        assert_eq!(regex.match_substring("Testcase1"),
-                   (0, "Testcase1".len()));
-        assert_eq!(regex.match_substring("This is Testcase2"),
-                   ("This is ".len(), "This is Testcase2".len()));
-        assert_eq!(regex.match_substring("Testcase"),  // Missing the number
-                   (0, 0));
-        assert_eq!(regex.match_substring("12"),  // Missing the literal
-                   (0, 0));
+        assert_eq!(regex.match_substring("Testcase1"), (0, "Testcase1".len()));
+        assert_eq!(
+            regex.match_substring("This is Testcase2"),
+            ("This is ".len(), "This is Testcase2".len())
+        );
+        assert_eq!(
+            regex.match_substring("Testcase"), // Missing the number
+            (0, 0)
+        );
+        assert_eq!(
+            regex.match_substring("12"), // Missing the literal
+            (0, 0)
+        );
         Ok(())
     }
 
@@ -312,14 +319,16 @@ mod tests {
     fn test_regex_substring_matching_with_tail_literal() -> Result<(), &'static str> {
         let regex = Regex::new("(T|t)estcase")?;
 
-        assert_eq!(regex.match_substring("Testcase"),
-                   (0, "Testcase".len()));
-        assert_eq!(regex.match_substring("This is a testcase"),
-                   ("This is a ".len(), "This is a testcase".len()));
-        assert_eq!(regex.match_substring("Testcases are everywhere"),
-                   (0, "Testcase".len()));
-        assert_eq!(regex.match_substring("estcase"),
-                   (0, 0));
+        assert_eq!(regex.match_substring("Testcase"), (0, "Testcase".len()));
+        assert_eq!(
+            regex.match_substring("This is a testcase"),
+            ("This is a ".len(), "This is a testcase".len())
+        );
+        assert_eq!(
+            regex.match_substring("Testcases are everywhere"),
+            (0, "Testcase".len())
+        );
+        assert_eq!(regex.match_substring("estcase"), (0, 0));
         Ok(())
     }
 
@@ -327,10 +336,11 @@ mod tests {
     fn test_regex_substring_matching_pure_literal() -> Result<(), &'static str> {
         let regex = Regex::new("a testcase")?;
 
-        assert_eq!(regex.match_substring("Contains a testcase"),
-                   ("Contains ".len(), "Contains a testcase".len()));
-        assert_eq!(regex.match_substring("Some other string"),
-                   (0, 0));
+        assert_eq!(
+            regex.match_substring("Contains a testcase"),
+            ("Contains ".len(), "Contains a testcase".len())
+        );
+        assert_eq!(regex.match_substring("Some other string"), (0, 0));
         Ok(())
     }
 
@@ -345,8 +355,7 @@ mod tests {
     fn test_tail_literal_spawns_check_not_at_char_boundary() -> Result<(), &'static str> {
         let regex = Regex::new("(T|t)estcase")?;
 
-        assert_eq!(regex.match_substring("Testcas教 estcase"),
-                   (0, 0));
+        assert_eq!(regex.match_substring("Testcas教 estcase"), (0, 0));
         Ok(())
     }
 }

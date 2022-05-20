@@ -1,12 +1,11 @@
-use std::io::{self, BufReader, BufRead};
 use std::fs::File;
+use std::io::{self, BufRead, BufReader};
 use walkdir::{DirEntry, WalkDir};
 
-use clap::{Arg, App};
-use ansi_term::Colour::{Red, Blue};
+use ansi_term::Colour::{Blue, Red};
+use clap::{App, Arg};
 
 mod regex;
-
 
 fn main() -> io::Result<()> {
     let matches = App::new("fst")
@@ -41,7 +40,7 @@ fn main() -> io::Result<()> {
     let pattern = matches.value_of("PATTERN").unwrap();
     let regex = match regex::Regex::new(&pattern) {
         Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidInput, e)),
-        Ok(r) => r
+        Ok(r) => r,
     };
 
     let color = !matches.is_present("black-and-white");
@@ -50,7 +49,14 @@ fn main() -> io::Result<()> {
 
     if matches.is_present("recursive") {
         let directory_name = matches.value_of("FILE").unwrap_or(".");
-        recursive_search(directory_name, &regex, operation_func, operation, color, matches.is_present("verbose"))?;
+        recursive_search(
+            directory_name,
+            &regex,
+            operation_func,
+            operation,
+            color,
+            matches.is_present("verbose"),
+        )?;
         return Ok(());
     }
 
@@ -65,7 +71,9 @@ fn main() -> io::Result<()> {
     }
 
     let count = apply_operation_to_reader(&mut reader, &regex, operation_func, color, "")?;
-    if operation == "c" { println!("{}", count);}
+    if operation == "c" {
+        println!("{}", count);
+    }
 
     Ok(())
 }
@@ -83,24 +91,25 @@ fn recursive_search(
         .into_iter()
         .filter_entry(|e| !is_hidden(e))
         .filter_map(Result::ok)
-        .filter(|e| !e.file_type().is_dir()) {
-            let path = entry.path().to_str().unwrap();
-            let file = File::open(&path)?;
-            let mut reader: Box<dyn BufRead> = Box::new(BufReader::new(file));
-            let prefix = &format!("{}:", path);
-            match apply_operation_to_reader(
-                &mut reader,
-                regex,
-                operation_func,
-                color,
-                prefix,
-            ) {
-                Ok(count) => {
-                    if operation == "c" && count > 0 { println!("{} {}", prefix, count);}
-                },
-                Err(message) => if verbose {println!("Error in {} {}", prefix, message);}
+        .filter(|e| !e.file_type().is_dir())
+    {
+        let path = entry.path().to_str().unwrap();
+        let file = File::open(&path)?;
+        let mut reader: Box<dyn BufRead> = Box::new(BufReader::new(file));
+        let prefix = &format!("{}:", path);
+        match apply_operation_to_reader(&mut reader, regex, operation_func, color, prefix) {
+            Ok(count) => {
+                if operation == "c" && count > 0 {
+                    println!("{} {}", prefix, count);
+                }
+            }
+            Err(message) => {
+                if verbose {
+                    println!("Error in {} {}", prefix, message);
+                }
             }
         }
+    }
     Ok(())
 }
 
@@ -117,7 +126,9 @@ fn apply_operation_to_reader(
 
     loop {
         let bytes_read = reader.read_line(&mut line)?;
-        if bytes_read == 0 { break; }
+        if bytes_read == 0 {
+            break;
+        }
 
         // Strip newline from string used to match against
         line_no_newline = &line[..(bytes_read - 1)];
@@ -127,7 +138,14 @@ fn apply_operation_to_reader(
             num_matching_lines += 1;
         }
 
-        operation_func(&line_no_newline, match_start, match_end, bytes_read - 1, color, prepend);
+        operation_func(
+            &line_no_newline,
+            match_start,
+            match_end,
+            bytes_read - 1,
+            color,
+            prepend,
+        );
         line.clear();
     }
     Ok(num_matching_lines)
@@ -142,7 +160,9 @@ fn print_line_with_match(
     color: bool,
     prepend: &str,
 ) {
-    if match_start == match_end { return; }
+    if match_start == match_end {
+        return;
+    }
 
     if color {
         print!("{}", Blue.paint(prepend));
@@ -151,12 +171,13 @@ fn print_line_with_match(
     }
 
     if color {
-        println!("{}{}{}",
-                 &line[..match_start],
-                 Red.paint(&line[match_start..match_end]),
-                 &line[match_end..line_length]);
+        println!(
+            "{}{}{}",
+            &line[..match_start],
+            Red.paint(&line[match_start..match_end]),
+            &line[match_end..line_length]
+        );
         return;
-
     }
     println!("{}", &line[..line_length])
 }
@@ -172,10 +193,10 @@ fn print_line_without_match(
 ) {
     if match_start == match_end {
         if color {
-                print!("{}", Blue.paint(prepend));
+            print!("{}", Blue.paint(prepend));
         } else {
-                print!("{}", prepend);
-            }
+            print!("{}", prepend);
+        }
         println!("{}", &line[..line_length])
     }
 }
@@ -189,7 +210,9 @@ fn print_matching_substring(
     color: bool,
     prepend: &str,
 ) {
-    if match_start == match_end { return; }
+    if match_start == match_end {
+        return;
+    }
     if color {
         print!("{}", Blue.paint(prepend));
     } else {
@@ -207,7 +230,9 @@ fn print_all_but_matching_substring(
     color: bool,
     prepend: &str,
 ) {
-    if match_start == match_end { return; }
+    if match_start == match_end {
+        return;
+    }
 
     if color {
         print!("{}", Blue.paint(prepend));
@@ -215,27 +240,31 @@ fn print_all_but_matching_substring(
         print!("{}", prepend);
     }
 
-    println!("{}{}",
-             &line[..match_start],
-             &line[match_end..line_length]);
+    println!("{}{}", &line[..match_start], &line[match_end..line_length]);
 }
 
-fn get_operation_func(operation: &str) -> io::Result<fn(&str, usize, usize, usize, bool, &str) -> ()> {
+fn get_operation_func(
+    operation: &str,
+) -> io::Result<fn(&str, usize, usize, usize, bool, &str) -> ()> {
     return match operation {
         "p" => Ok(print_line_with_match),
         "ip" => Ok(print_line_without_match),
         "m" => Ok(print_matching_substring),
         "im" => Ok(print_all_but_matching_substring),
         "c" => Ok(|_, _, _, _, _, _| {}),
-        _ => return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("Unsupported operation '{}'", operation)))
-    }
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Unsupported operation '{}'", operation),
+            ))
+        }
+    };
 }
 
 fn is_hidden(entry: &DirEntry) -> bool {
-    entry.file_name()
-         .to_str()
-         .map(|s| s.starts_with(".") && s != ".")
-         .unwrap_or(false)
+    entry
+        .file_name()
+        .to_str()
+        .map(|s| s.starts_with(".") && s != ".")
+        .unwrap_or(false)
 }

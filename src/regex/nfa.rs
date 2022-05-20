@@ -1,5 +1,5 @@
-use std::vec::Vec;
 use std::fmt;
+use std::vec::Vec;
 
 /// Convert a regular expression to a NFA.
 ///
@@ -18,7 +18,7 @@ pub fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
     let mut nfa_builder = NFABuilder {
         register: StateRegister::new(),
         fragment_stack: Vec::new(),
-        operator_stack: Vec::new()
+        operator_stack: Vec::new(),
     };
 
     let mut previous_char: Option<char> = None;
@@ -45,8 +45,7 @@ pub fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
         if character == '\\' {
             if let Some((_, next_character)) = regex_char_indices.next() {
                 nfa_builder.parse_literal_to_nfa(next_character);
-            }
-            else {
+            } else {
                 return Err("Regex cannot end in a escape");
             }
 
@@ -73,7 +72,7 @@ pub fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
             }
 
             nfa_builder.parse_bracket_character_class_to_nfa(
-                &regex[(char_byte_index + 1)..end_bracket_char_byte_index.unwrap()]
+                &regex[(char_byte_index + 1)..end_bracket_char_byte_index.unwrap()],
             );
 
             previous_char = Some(']');
@@ -87,17 +86,17 @@ pub fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
             // character here.
             '*' | '+' | '?' | '|' => {
                 nfa_builder.handle_operator(character)?;
-            },
+            }
             // Parentheses: grouping
             '(' => {
                 nfa_builder.operator_stack.push('(');
-            },
+            }
             ')' => {
                 nfa_builder.handle_closing_paren()?;
             }
             '.' => {
                 nfa_builder.parse_dot_character_class_to_nfa();
-            },
+            }
             // Default: Literal character
             _ => {
                 nfa_builder.parse_literal_to_nfa(character);
@@ -113,7 +112,7 @@ pub fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
 
     return Ok(NFA {
         state_register: nfa_builder.register,
-        start_state: final_nfa_fragment.start
+        start_state: final_nfa_fragment.start,
     });
 }
 
@@ -122,7 +121,7 @@ pub fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
 /// the entry point (start state) of the NFA.
 pub struct NFA<'a> {
     state_register: StateRegister<'a>,
-    start_state: usize
+    start_state: usize,
 }
 
 impl<'a> NFA<'a> {
@@ -178,7 +177,7 @@ struct NFASimulation<'a> {
     // vec is more preformant than a hash-set.
     current_states: Vec<usize>,
     // Has the match state been reached?
-    in_match_state: bool
+    in_match_state: bool,
 }
 
 impl<'a> NFASimulation<'a> {
@@ -186,7 +185,7 @@ impl<'a> NFASimulation<'a> {
         let mut new_simulation = NFASimulation {
             nfa,
             current_states: Vec::new(),
-            in_match_state: false
+            in_match_state: false,
         };
 
         // Initialize the current states of the simulation with the
@@ -194,7 +193,7 @@ impl<'a> NFASimulation<'a> {
         let mut inital_states = NFASimulationNextStates::new(nfa);
         inital_states.insert_or_follow_split(
             nfa.state_register.get_state(nfa.start_state),
-            nfa.start_state
+            nfa.start_state,
         );
         new_simulation.current_states = inital_states.states;
         new_simulation.in_match_state = inital_states.contains_match_state;
@@ -220,7 +219,7 @@ impl<'a> NFASimulation<'a> {
 struct NFASimulationNextStates<'a> {
     nfa: &'a NFA<'a>,
     states: Vec<usize>,
-    contains_match_state: bool
+    contains_match_state: bool,
 }
 
 impl<'a> NFASimulationNextStates<'a> {
@@ -228,7 +227,7 @@ impl<'a> NFASimulationNextStates<'a> {
         NFASimulationNextStates {
             nfa,
             states: Vec::new(),
-            contains_match_state: false
+            contains_match_state: false,
         }
     }
 
@@ -239,21 +238,21 @@ impl<'a> NFASimulationNextStates<'a> {
             // Literal: follow out if current matches literal's char
             StateType::Literal(c) => {
                 if *c == character {
-                     self.follow_first_out_arrow(state);
+                    self.follow_first_out_arrow(state);
                 }
-            },
+            }
             // With a dot state we follow the output arrow
             // regardless of what the current character is
             StateType::Dot => {
                 self.follow_first_out_arrow(state);
-            },
+            }
             // With a bracket state we follow the output arrow if
             // the current character matches the bracket.
             StateType::Bracket(bracketed) => {
                 if matches_bracket(character, bracketed) {
                     self.follow_first_out_arrow(state);
                 }
-            },
+            }
             StateType::Split => {
                 // We should never reach a split here. The job of
                 // `insert_or_follow_split` is to handle those.
@@ -262,7 +261,7 @@ impl<'a> NFASimulationNextStates<'a> {
             StateType::Match => {
                 // `insert_of_follow_split` also handles match states.
                 panic!("Unexpected `Match` passed to `update`!");
-            },
+            }
         }
     }
 
@@ -270,7 +269,7 @@ impl<'a> NFASimulationNextStates<'a> {
     /// the end of it into the next states. Any split will be followed
     /// and the output states of that split will be added instead.
     /// TODO: Is it worth it to check if the state is already in next?
-    fn follow_first_out_arrow(&mut self, state: &State){
+    fn follow_first_out_arrow(&mut self, state: &State) {
         let next_state_id = state.out[0].unwrap();
         let next_state = self.nfa.state_register.get_state(next_state_id);
         self.insert_or_follow_split(next_state, next_state_id);
@@ -286,11 +285,9 @@ impl<'a> NFASimulationNextStates<'a> {
                 for state_out_id in state.out.iter().flat_map(|id| *id) {
                     let state_out: &State = self.nfa.state_register.get_state(state_out_id);
 
-                    self.insert_or_follow_split(
-                        state_out, state_out_id
-                    );
+                    self.insert_or_follow_split(state_out, state_out_id);
                 }
-            },
+            }
             StateType::Match => {
                 self.contains_match_state = true;
             }
@@ -306,7 +303,7 @@ impl<'a> NFASimulationNextStates<'a> {
 /// by their unique id in reference to a given StateRegister.
 struct Fragment {
     start: usize,
-    ends: Vec<usize>
+    ends: Vec<usize>,
 }
 
 impl<'a> Fragment {
@@ -322,7 +319,7 @@ impl<'a> Fragment {
 struct NFABuilder<'a> {
     fragment_stack: Vec<Fragment>,
     operator_stack: Vec<char>,
-    register: StateRegister<'a>
+    register: StateRegister<'a>,
 }
 
 impl<'a> NFABuilder<'a> {
@@ -359,7 +356,7 @@ impl<'a> NFABuilder<'a> {
         while self.should_pop_from_operator_stack(operator) {
             match self.operator_stack.pop() {
                 Some(op) => self.parse_operator_to_nfa(op)?,
-                None => break
+                None => break,
             }
         }
 
@@ -404,23 +401,23 @@ impl<'a> NFABuilder<'a> {
             // Alteration (or)
             '|' => {
                 self.parse_alteration_operator_to_nfa()?;
-            },
+            }
             // Concatenation (and)
             '~' => {
                 self.parse_concatenation_operator_to_nfa()?;
-            },
+            }
             // Zero or more
             '*' => {
                 self.parse_zero_or_more_operator_to_nfa()?;
-            },
+            }
             // One or more
             '+' => {
                 self.parse_one_or_more_operator_to_nfa()?;
-            },
+            }
             // Zero or one
             '?' => {
                 self.parse_zero_or_one_operator_to_nfa()?;
-            },
+            }
             _ => {
                 panic!("Invalid regex operator found in operator stack.")
             }
@@ -437,7 +434,7 @@ impl<'a> NFABuilder<'a> {
 
         let single_literal_fragment = Fragment {
             start: literal,
-            ends: vec![literal]
+            ends: vec![literal],
         };
         self.fragment_stack.push(single_literal_fragment);
     }
@@ -467,7 +464,7 @@ impl<'a> NFABuilder<'a> {
         // and push that to the stack
         let fused_fragment = Fragment {
             start: fragment_1.start,
-            ends: fragment_2.ends
+            ends: fragment_2.ends,
         };
         self.fragment_stack.push(fused_fragment);
         Ok(())
@@ -486,17 +483,16 @@ impl<'a> NFABuilder<'a> {
 
         // Create a new split state which has the start states of the
         // two fragments as the two choices.
-        let split = self.register.new_split(
-            Some(fragment_1.start),
-            Some(fragment_2.start)
-        );
+        let split = self
+            .register
+            .new_split(Some(fragment_1.start), Some(fragment_2.start));
 
         // Collect this into a new fragment with the split state as
         // the start state and with the union of the ends of the two
         // fragments as the new vector of ends.
         let split_fragment = Fragment {
             start: split,
-            ends: [&fragment_1.ends[..], &fragment_2.ends[..]].concat()
+            ends: [&fragment_1.ends[..], &fragment_2.ends[..]].concat(),
         };
         self.fragment_stack.push(split_fragment);
         Ok(())
@@ -505,7 +501,7 @@ impl<'a> NFABuilder<'a> {
     /// Create a NFA fragment given `fragment_stack` and a "?"
     ///
     /// Part of the `regex_to_nfa` algorithm.
-    fn parse_zero_or_one_operator_to_nfa (&mut self) -> Result<(), &'static str> {
+    fn parse_zero_or_one_operator_to_nfa(&mut self) -> Result<(), &'static str> {
         if self.fragment_stack.len() < 1 {
             return Err("No valid operand found for the zero or one operator. Have you forgotten to escape a operator?");
         }
@@ -515,7 +511,7 @@ impl<'a> NFABuilder<'a> {
 
         let zero_or_one_fragment = Fragment {
             start: split_state,
-            ends: [&fragment.ends[..], &[split_state]].concat()
+            ends: [&fragment.ends[..], &[split_state]].concat(),
         };
 
         self.fragment_stack.push(zero_or_one_fragment);
@@ -537,7 +533,7 @@ impl<'a> NFABuilder<'a> {
 
         let zero_or_more_fragment = Fragment {
             start: split_state,
-            ends: vec![split_state]
+            ends: vec![split_state],
         };
 
         self.fragment_stack.push(zero_or_more_fragment);
@@ -559,7 +555,7 @@ impl<'a> NFABuilder<'a> {
 
         let one_or_more_fragment = Fragment {
             start: fragment.start,
-            ends: vec![split_state]
+            ends: vec![split_state],
         };
 
         self.fragment_stack.push(one_or_more_fragment);
@@ -574,7 +570,7 @@ impl<'a> NFABuilder<'a> {
 
         let single_dot_fragment = Fragment {
             start: dot,
-            ends: vec![dot]
+            ends: vec![dot],
         };
         self.fragment_stack.push(single_dot_fragment);
     }
@@ -583,17 +579,13 @@ impl<'a> NFABuilder<'a> {
     ///
     /// Part of the `regex_to_nfa` algorithm.
     fn parse_bracket_character_class_to_nfa<'b: 'a>(&mut self, bracketed_expression: &'b str) {
-        let bracket = self.register.new_bracket(
-            bracketed_expression,
-            None
-        );
+        let bracket = self.register.new_bracket(bracketed_expression, None);
 
         let single_bracket_fragment = Fragment {
             start: bracket,
-            ends: vec![bracket]
+            ends: vec![bracket],
         };
         self.fragment_stack.push(single_bracket_fragment);
-
     }
 
     /// Should we pop from the operator stack before adding the new operator?
@@ -613,14 +605,14 @@ impl<'a> NFABuilder<'a> {
 /// through it, and it manages the lifetime of the states.
 struct StateRegister<'a> {
     states: Vec<State<'a>>,
-    current_id: usize
+    current_id: usize,
 }
 
 impl<'a> StateRegister<'a> {
     fn new() -> StateRegister<'a> {
         StateRegister {
             states: Vec::new(),
-            current_id: 0
+            current_id: 0,
         }
     }
 
@@ -629,7 +621,7 @@ impl<'a> StateRegister<'a> {
         let ref_to_state_or_none = self.states.get(state_id);
 
         if ref_to_state_or_none.is_some() {
-            return ref_to_state_or_none.unwrap()
+            return ref_to_state_or_none.unwrap();
         }
         panic!("No state with id {}", state_id);
     }
@@ -639,7 +631,7 @@ impl<'a> StateRegister<'a> {
         let mut_ref_to_state_or_none = self.states.get_mut(state_id);
 
         if mut_ref_to_state_or_none.is_some() {
-            return mut_ref_to_state_or_none.unwrap()
+            return mut_ref_to_state_or_none.unwrap();
         }
         panic!("No state with id {}", state_id);
     }
@@ -649,14 +641,16 @@ impl<'a> StateRegister<'a> {
     fn connect_dangling_outs_to_state(&mut self, state_id: usize, to_state: usize) {
         let mut state = self.get_mut_state(state_id);
 
-        state.out = state.out.iter().map(
-            |val| {
+        state.out = state
+            .out
+            .iter()
+            .map(|val| {
                 if val.is_some() {
                     return *val;
                 }
                 return Some(to_state);
-            }
-        ).collect();
+            })
+            .collect();
     }
 
     /// Register a new state.
@@ -671,10 +665,7 @@ impl<'a> StateRegister<'a> {
     }
 
     fn new_literal(&mut self, contains: char, out_state: Option<usize>) -> usize {
-        self.new_state(
-            StateType::Literal(contains),
-            vec![out_state]
-        )
+        self.new_state(StateType::Literal(contains), vec![out_state])
     }
 
     fn new_dot(&mut self, out_state: Option<usize>) -> usize {
@@ -682,24 +673,15 @@ impl<'a> StateRegister<'a> {
     }
 
     fn new_bracket(&mut self, contains: &'a str, out_state: Option<usize>) -> usize {
-        self.new_state(
-            StateType::Bracket(contains),
-            vec![out_state]
-        )
+        self.new_state(StateType::Bracket(contains), vec![out_state])
     }
 
     fn new_split(&mut self, out_state_1: Option<usize>, out_state_2: Option<usize>) -> usize {
-        self.new_state(
-            StateType::Split,
-            vec![out_state_1, out_state_2]
-        )
+        self.new_state(StateType::Split, vec![out_state_1, out_state_2])
     }
 
     fn match_state(&mut self) -> usize {
-        self.new_state(
-            StateType::Match,
-            vec![]
-        )
+        self.new_state(StateType::Match, vec![])
     }
 }
 
@@ -710,7 +692,7 @@ struct State<'a> {
     // The states at the ends of the outgoing arrows of this state, if any
     // These states are referenced by their id, to find the actual states
     // one must go via the StateRegister.
-    out: Vec<Option<usize>>
+    out: Vec<Option<usize>>,
 }
 
 impl<'a> fmt::Display for State<'a> {
@@ -720,7 +702,7 @@ impl<'a> fmt::Display for State<'a> {
             StateType::Dot => write!(f, "Dot (.) ->"),
             StateType::Bracket(bracketed) => write!(f, "Bracket ([{}]) ->", &bracketed),
             StateType::Split => write!(f, "Split <- () ->"),
-            StateType::Match => write!(f, "MATCH ()")
+            StateType::Match => write!(f, "MATCH ()"),
         }
     }
 }
@@ -744,12 +726,14 @@ enum StateType<'a> {
 /// means higher precedence.
 fn precedence(regex_operator: char) -> usize {
     match regex_operator {
-        '|' => 1,  // Alteration (or)
-        '~' => 3,  // Concatenation (and)
-        '*' => 4,  // Zero or more
-        '+' => 4,  // One or more
-        '?' => 4,  // Zero or one
-        _ => { panic!("Invalid regex operator") }
+        '|' => 1, // Alteration (or)
+        '~' => 3, // Concatenation (and)
+        '*' => 4, // Zero or more
+        '+' => 4, // One or more
+        '?' => 4, // Zero or one
+        _ => {
+            panic!("Invalid regex operator")
+        }
     }
 }
 
@@ -798,8 +782,7 @@ fn matches_bracket(character: char, bracketed_expression: &str) -> bool {
             previous = bracketed_chars.next();
             current = bracketed_chars.next();
             next = bracketed_chars.next();
-        }
-        else {
+        } else {
             // Base case: three characters that are not a valid range
             if character == previous.unwrap() {
                 result = true;
@@ -829,7 +812,7 @@ fn check_for_invalid(regex: &str) -> Result<(), &'static str> {
 /// Is a character in the given character range.
 fn char_in_range(character: char, range_start: char, range_end: char) -> bool {
     if range_start < range_end {
-        return range_start <= character && character <= range_end
+        return range_start <= character && character <= range_end;
     }
     panic!("Invalid range: {}-{}", range_start, range_end)
 }
@@ -837,10 +820,8 @@ fn char_in_range(character: char, range_start: char, range_end: char) -> bool {
 /// Determine if two characters are concatenated if they appear after
 /// each other in a infix regex.
 fn are_concatenated(character: char, next_character: char) -> bool {
-    return !(
-        ['*', '+', '?', '|', ')'].contains(&next_character) ||
-            ['|', '('].contains(&character)
-    );
+    return !(['*', '+', '?', '|', ')'].contains(&next_character)
+        || ['|', '('].contains(&character));
 }
 
 #[cfg(test)]
@@ -855,9 +836,9 @@ mod tests {
 
         assert_eq!(nfa.simulate("ac", false), Some(2));
         assert_eq!(nfa.simulate("⻘c", false), Some("⻘c".len()));
-        assert_eq!(nfa.simulate("a", false), None);  // Missing c
-        assert_eq!(nfa.simulate("c", false), None);  // Missing first char
-        assert_eq!(nfa.simulate("xc", false), None);  // Wrong first char
+        assert_eq!(nfa.simulate("a", false), None); // Missing c
+        assert_eq!(nfa.simulate("c", false), None); // Missing first char
+        assert_eq!(nfa.simulate("xc", false), None); // Wrong first char
         Ok(())
     }
 
@@ -870,18 +851,18 @@ mod tests {
         assert_eq!(nfa.simulate("ac", false), Some(2));
         assert_eq!(nfa.simulate("c", false), Some(1));
         assert_eq!(nfa.simulate("aaaac", false), Some(5));
-        assert_eq!(nfa.simulate("accccc", false), Some(2));  // 2 not greedy
+        assert_eq!(nfa.simulate("accccc", false), Some(2)); // 2 not greedy
         assert_eq!(nfa.simulate("bc", false), Some(2));
-        assert_eq!(nfa.simulate("abc", false), Some(3));  // Both characters allowed in zero or more
-        assert_eq!(nfa.simulate("b", false), None);  // Too few c
-        assert_eq!(nfa.simulate("", false), None);  // Too few c
+        assert_eq!(nfa.simulate("abc", false), Some(3)); // Both characters allowed in zero or more
+        assert_eq!(nfa.simulate("b", false), None); // Too few c
+        assert_eq!(nfa.simulate("", false), None); // Too few c
         Ok(())
     }
 
     #[test]
     fn test_regex_nfa_matching_3() -> Result<(), &'static str> {
         // Test character classes
-        let regex: &str = ".*a[0-9]+";  // Any string that ends in `a` + number
+        let regex: &str = ".*a[0-9]+"; // Any string that ends in `a` + number
         let nfa = regex_to_nfa(regex)?;
 
         assert_eq!(nfa.simulate("a2021", true), Some(5));
@@ -896,7 +877,7 @@ mod tests {
     #[test]
     fn test_regex_nfa_matching_4() -> Result<(), &'static str> {
         // Test escaping
-        let regex: &str = r"(\.\*)+";  // One or more literal .*
+        let regex: &str = r"(\.\*)+"; // One or more literal .*
         let nfa = regex_to_nfa(regex)?;
 
         assert_eq!(nfa.simulate(".*.*.*.*", true), Some(8));
@@ -935,9 +916,12 @@ mod tests {
         assert_eq!(nfa.simulate("aø⻘", false), Some("aø⻘".len()));
         assert_eq!(nfa.simulate("⻘", false), Some("⻘".len()));
         assert_eq!(nfa.simulate("ø⻘", false), Some("ø⻘".len()));
-        assert_eq!(nfa.simulate("aaaaaaaaaaaa⻘⻘⻘⻘⻘⻘", false), Some("aaaaaaaaaaaa⻘".len()));
-        assert_eq!(nfa.simulate("aøø⻘", false), None);  // Too many ø
-        assert_eq!(nfa.simulate("aø", false), None);  // Too few ⻘
+        assert_eq!(
+            nfa.simulate("aaaaaaaaaaaa⻘⻘⻘⻘⻘⻘", false),
+            Some("aaaaaaaaaaaa⻘".len())
+        );
+        assert_eq!(nfa.simulate("aøø⻘", false), None); // Too many ø
+        assert_eq!(nfa.simulate("aø", false), None); // Too few ⻘
         Ok(())
     }
 
