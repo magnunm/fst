@@ -1,10 +1,11 @@
+use std::boxed::Box;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 use walkdir::{DirEntry, WalkDir};
 
-use ansi_term::Colour::{Blue, Red};
 use clap::{App, Arg};
 
+mod operations;
 mod regex;
 
 fn main() -> io::Result<()> {
@@ -44,16 +45,16 @@ fn main() -> io::Result<()> {
     };
 
     let color = !matches.is_present("black-and-white");
-    let operation = matches.value_of("operation").unwrap_or("p");
-    let operation_func = get_operation_func(operation)?;
+    let operation_str = matches.value_of("operation").unwrap_or("p");
+    let operation = get_operation(operation_str)?;
 
     if matches.is_present("recursive") {
         let directory_name = matches.value_of("FILE").unwrap_or(".");
         recursive_search(
             directory_name,
             &regex,
-            operation_func,
-            operation,
+            &operation,
+            operation_str,
             color,
             matches.is_present("verbose"),
         )?;
@@ -70,8 +71,8 @@ fn main() -> io::Result<()> {
         reader = Box::new(BufReader::new(stdin));
     }
 
-    let count = apply_operation_to_reader(&mut reader, &regex, operation_func, color, "")?;
-    if operation == "c" {
+    let count = apply_operation_to_reader(&mut reader, &regex, &operation, color, "")?;
+    if operation_str == "c" {
         println!("{}", count);
     }
 
@@ -81,8 +82,8 @@ fn main() -> io::Result<()> {
 fn recursive_search(
     directory_name: &str,
     regex: &regex::Regex,
-    operation_func: fn(&str, usize, usize, usize, bool, &str) -> (),
-    operation: &str,
+    operation: &Box<dyn operations::Operation>,
+    operation_str: &str,
     color: bool,
     verbose: bool,
 ) -> io::Result<()> {
@@ -97,9 +98,9 @@ fn recursive_search(
         let file = File::open(&path)?;
         let mut reader: Box<dyn BufRead> = Box::new(BufReader::new(file));
         let prefix = &format!("{}:", path);
-        match apply_operation_to_reader(&mut reader, regex, operation_func, color, prefix) {
+        match apply_operation_to_reader(&mut reader, regex, operation, color, prefix) {
             Ok(count) => {
-                if operation == "c" && count > 0 {
+                if operation_str == "c" && count > 0 {
                     println!("{} {}", prefix, count);
                 }
             }
@@ -116,7 +117,7 @@ fn recursive_search(
 fn apply_operation_to_reader(
     reader: &mut Box<dyn BufRead>,
     regex: &regex::Regex,
-    operation_func: fn(&str, usize, usize, usize, bool, &str) -> (),
+    operation: &Box<dyn operations::Operation>,
     color: bool,
     prepend: &str,
 ) -> io::Result<i32> {
@@ -138,7 +139,7 @@ fn apply_operation_to_reader(
             num_matching_lines += 1;
         }
 
-        operation_func(
+        operation.apply(
             &line_no_newline,
             match_start,
             match_end,
@@ -151,107 +152,13 @@ fn apply_operation_to_reader(
     Ok(num_matching_lines)
 }
 
-/// Print the given line if it contains a nonempty matching substring.
-fn print_line_with_match(
-    line: &str,
-    match_start: usize,
-    match_end: usize,
-    line_length: usize,
-    color: bool,
-    prepend: &str,
-) {
-    if match_start == match_end {
-        return;
-    }
-
-    if color {
-        print!("{}", Blue.paint(prepend));
-    } else {
-        print!("{}", prepend);
-    }
-
-    if color {
-        println!(
-            "{}{}{}",
-            &line[..match_start],
-            Red.paint(&line[match_start..match_end]),
-            &line[match_end..line_length]
-        );
-        return;
-    }
-    println!("{}", &line[..line_length])
-}
-
-/// Print the given line if it does not contain a nonempty matching substring.
-fn print_line_without_match(
-    line: &str,
-    match_start: usize,
-    match_end: usize,
-    line_length: usize,
-    color: bool,
-    prepend: &str,
-) {
-    if match_start == match_end {
-        if color {
-            print!("{}", Blue.paint(prepend));
-        } else {
-            print!("{}", prepend);
-        }
-        println!("{}", &line[..line_length])
-    }
-}
-
-/// Print the mathcing substring of a matching line.
-fn print_matching_substring(
-    line: &str,
-    match_start: usize,
-    match_end: usize,
-    _line_length: usize,
-    color: bool,
-    prepend: &str,
-) {
-    if match_start == match_end {
-        return;
-    }
-    if color {
-        print!("{}", Blue.paint(prepend));
-    } else {
-        print!("{}", prepend);
-    }
-    println!("{}", &line[match_start..match_end])
-}
-
-/// Print all but the mathcing substring of a matching line.
-fn print_all_but_matching_substring(
-    line: &str,
-    match_start: usize,
-    match_end: usize,
-    line_length: usize,
-    color: bool,
-    prepend: &str,
-) {
-    if match_start == match_end {
-        return;
-    }
-
-    if color {
-        print!("{}", Blue.paint(prepend));
-    } else {
-        print!("{}", prepend);
-    }
-
-    println!("{}{}", &line[..match_start], &line[match_end..line_length]);
-}
-
-fn get_operation_func(
-    operation: &str,
-) -> io::Result<fn(&str, usize, usize, usize, bool, &str) -> ()> {
+fn get_operation(operation: &str) -> io::Result<Box<dyn operations::Operation>> {
     return match operation {
-        "p" => Ok(print_line_with_match),
-        "ip" => Ok(print_line_without_match),
-        "m" => Ok(print_matching_substring),
-        "im" => Ok(print_all_but_matching_substring),
-        "c" => Ok(|_, _, _, _, _, _| {}),
+        "p" => Ok(Box::new(operations::PrintMatchingLine)),
+        "ip" => Ok(Box::new(operations::PrintNonMatchingLine)),
+        "m" => Ok(Box::new(operations::PrintMatch)),
+        "im" => Ok(Box::new(operations::PrintExceptMatch)),
+        "c" => Ok(Box::new(operations::Count)),
         _ => {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
