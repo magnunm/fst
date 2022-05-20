@@ -10,32 +10,55 @@ mod regex;
 
 fn main() -> io::Result<()> {
     let matches = App::new("fst")
-        .about("A stream filter. Supported OPERATION's are: p (print matching lines), ip (inverse print, print non-matching lines), m (print only matching substrings), im (print the matching lines with the matching substrings removed) and c (count matching lines). Default is p.")
-        .arg(Arg::with_name("PATTERN")
-             .help("The pattern to match")
-             .required(true)
-             .index(1))
-        .arg(Arg::with_name("FILE")
-             .help("The file to search. If none read stdin. If recursive search then this is the directory, or current directory if none.")
-             .index(2))
-        .arg(Arg::with_name("black-and-white")
-             .short("b")
-             .long("black-and-white")
-             .help("Disable colors"))
-        .arg(Arg::with_name("recursive")
-             .short("r")
-             .long("recursive")
-             .help("Search all files in the directory FILE recursively."))
-        .arg(Arg::with_name("verbose")
-             .short("v")
-             .long("verbose")
-             .help("Verbose error messaging."))
-        .arg(Arg::with_name("operation")
-             .short("o")
-             .long("operation")
-             .value_name("OPERATION")
-             .takes_value(true)
-             .help("Operation to preform on the lines of the FILE."))
+        .about(concat!(
+            "A stream filter. Supported OPERATION's are: \n",
+            "p  (print matching lines) \n",
+            "ip (inverse print, print non-matching lines) \n",
+            "m  (print only matching substrings) \n",
+            "im (print the matching lines with the matching substrings removed) \n",
+            "c  (count matching lines) \n",
+            "Default is p.",
+        ))
+        .arg(
+            Arg::with_name("PATTERN")
+                .help("The pattern to match")
+                .required(true)
+                .index(1),
+        )
+        .arg(
+            Arg::with_name("FILE")
+                .help(concat!(
+                    "The file to search. If none read stdin. If recursive search then this is ",
+                    "the directory, or current directory if none.",
+                ))
+                .index(2),
+        )
+        .arg(
+            Arg::with_name("black-and-white")
+                .short("b")
+                .long("black-and-white")
+                .help("Disable colors"),
+        )
+        .arg(
+            Arg::with_name("recursive")
+                .short("r")
+                .long("recursive")
+                .help("Search all files in the directory FILE recursively."),
+        )
+        .arg(
+            Arg::with_name("verbose")
+                .short("v")
+                .long("verbose")
+                .help("Verbose error messaging."),
+        )
+        .arg(
+            Arg::with_name("operation")
+                .short("o")
+                .long("operation")
+                .value_name("OPERATION")
+                .takes_value(true)
+                .help("Operation to preform on the lines of the FILE."),
+        )
         .get_matches();
 
     let pattern = matches.value_of("PATTERN").unwrap();
