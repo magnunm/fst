@@ -2,7 +2,9 @@
 /// a NFA (non-deterministic finite automaton).
 use std::str;
 
-mod nfa;
+mod state_machine;
+use state_machine::machine::NFA;
+use state_machine::regex_to_nfa;
 
 /// A regular expression string, and functions to match a input string to it.
 pub struct Regex<'a> {
@@ -11,7 +13,7 @@ pub struct Regex<'a> {
     literal_string_head: &'a str,
     literal_string_tail: &'a str,
     // The NFA constructed from the regex and used internally for matching.
-    nfa: Option<nfa::NFA<'a>>,
+    nfa: Option<NFA<'a>>,
     // Whether or not the regex started with a caret (^) and/or ends with a
     // dollar ($).
     from_start: bool,
@@ -43,7 +45,7 @@ impl<'a> Regex<'a> {
         let nfa = if nfa_regex == "" {
             None
         } else {
-            Some(nfa::regex_to_nfa(nfa_regex)?)
+            Some(regex_to_nfa(nfa_regex)?)
         };
 
         let literal_string_head = &stripped_regex[0..non_literal_range.0];
