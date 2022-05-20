@@ -85,9 +85,8 @@ fn main() -> io::Result<()> {
 
     let mut reader: Box<dyn BufRead>;
 
-    if let Some(file_name) = matches.value_of("FILE") {
-        let file = File::open(&file_name)?;
-        reader = Box::new(BufReader::new(file));
+    if let Some(filename) = matches.value_of("FILE") {
+        reader = reader_for_file(filename)?;
     } else {
         let stdin = io::stdin();
         reader = Box::new(BufReader::new(stdin));
@@ -117,8 +116,7 @@ fn recursive_search(
         .filter(|e| !e.file_type().is_dir())
     {
         let path = entry.path().to_str().unwrap();
-        let file = File::open(&path)?;
-        let mut reader: Box<dyn BufRead> = Box::new(BufReader::new(file));
+        let mut reader = reader_for_file(&path)?;
         let prefix = &format!("{}:", path);
 
         match apply_operation_to_reader(&mut reader, regex, operation, prefix) {
@@ -191,4 +189,9 @@ fn is_hidden(entry: &DirEntry) -> bool {
         .to_str()
         .map(|s| s.starts_with(".") && s != ".")
         .unwrap_or(false)
+}
+
+fn reader_for_file(filename: &str) -> io::Result<Box<dyn BufRead>> {
+    let file = File::open(&filename)?;
+    Ok(Box::new(BufReader::new(file)))
 }
