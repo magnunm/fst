@@ -44,8 +44,10 @@ fn main() -> io::Result<()> {
         Ok(r) => r,
     };
 
-    let color = !matches.is_present("black-and-white");
-    let mut operation = get_operation(matches.value_of("operation").unwrap_or("p"))?;
+    let mut operation = get_operation(
+        matches.value_of("operation").unwrap_or("p"),
+        !matches.is_present("black-and-white"),
+    )?;
 
     if matches.is_present("recursive") {
         let directory_name = matches.value_of("FILE").unwrap_or(".");
@@ -53,7 +55,6 @@ fn main() -> io::Result<()> {
             directory_name,
             &regex,
             &mut operation,
-            color,
             matches.is_present("verbose"),
         )?;
         return Ok(());
@@ -69,7 +70,7 @@ fn main() -> io::Result<()> {
         reader = Box::new(BufReader::new(stdin));
     }
 
-    apply_operation_to_reader(&mut reader, &regex, &mut operation, color, "")?;
+    apply_operation_to_reader(&mut reader, &regex, &mut operation, "")?;
 
     let final_report = operation.final_report();
     if final_report.len() > 0 {
@@ -83,7 +84,6 @@ fn recursive_search(
     directory_name: &str,
     regex: &regex::Regex,
     operation: &mut Box<dyn operations::Operation>,
-    color: bool,
     verbose: bool,
 ) -> io::Result<()> {
     for entry in WalkDir::new(directory_name)
@@ -98,7 +98,7 @@ fn recursive_search(
         let mut reader: Box<dyn BufRead> = Box::new(BufReader::new(file));
         let prefix = &format!("{}:", path);
 
-        match apply_operation_to_reader(&mut reader, regex, operation, color, prefix) {
+        match apply_operation_to_reader(&mut reader, regex, operation, prefix) {
             Ok(()) => {
                 let report = operation.final_report();
                 if report.len() > 0 {
@@ -119,7 +119,6 @@ fn apply_operation_to_reader(
     reader: &mut Box<dyn BufRead>,
     regex: &regex::Regex,
     operation: &mut Box<dyn operations::Operation>,
-    color: bool,
     prepend: &str,
 ) -> io::Result<()> {
     let mut line = String::new();
@@ -140,7 +139,6 @@ fn apply_operation_to_reader(
             match_start,
             match_end,
             bytes_read - 1,
-            color,
             prepend,
         );
         line.clear();
@@ -148,12 +146,12 @@ fn apply_operation_to_reader(
     Ok(())
 }
 
-fn get_operation(operation: &str) -> io::Result<Box<dyn operations::Operation>> {
+fn get_operation(operation: &str, color: bool) -> io::Result<Box<dyn operations::Operation>> {
     return match operation {
-        "p" => Ok(Box::new(operations::PrintMatchingLine)),
-        "ip" => Ok(Box::new(operations::PrintNonMatchingLine)),
-        "m" => Ok(Box::new(operations::PrintMatch)),
-        "im" => Ok(Box::new(operations::PrintExceptMatch)),
+        "p" => Ok(Box::new(operations::PrintMatchingLine { color })),
+        "ip" => Ok(Box::new(operations::PrintNonMatchingLine { color })),
+        "m" => Ok(Box::new(operations::PrintMatch { color })),
+        "im" => Ok(Box::new(operations::PrintExceptMatch { color })),
         "c" => Ok(Box::new(operations::Count { count: 0 })),
         _ => {
             return Err(io::Error::new(

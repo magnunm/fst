@@ -9,7 +9,6 @@ pub trait Operation {
         match_start: usize,
         match_end: usize,
         line_length: usize,
-        color: bool,
         prepend: &str,
     );
 
@@ -18,7 +17,9 @@ pub trait Operation {
     fn final_report(&self) -> String;
 }
 
-pub struct PrintMatchingLine;
+pub struct PrintMatchingLine {
+    pub color: bool,
+}
 
 impl Operation for PrintMatchingLine {
     /// Print the given line if it contains a nonempty matching substring.
@@ -28,20 +29,19 @@ impl Operation for PrintMatchingLine {
         match_start: usize,
         match_end: usize,
         line_length: usize,
-        color: bool,
         prepend: &str,
     ) {
         if match_start == match_end {
             return;
         }
 
-        if color {
+        if self.color {
             print!("{}", Blue.paint(prepend));
         } else {
             print!("{}", prepend);
         }
 
-        if color {
+        if self.color {
             println!(
                 "{}{}{}",
                 &line[..match_start],
@@ -58,7 +58,9 @@ impl Operation for PrintMatchingLine {
     }
 }
 
-pub struct PrintNonMatchingLine;
+pub struct PrintNonMatchingLine {
+    pub color: bool,
+}
 
 impl Operation for PrintNonMatchingLine {
     /// Print the given line if it does not contain a nonempty matching substring.
@@ -68,11 +70,10 @@ impl Operation for PrintNonMatchingLine {
         match_start: usize,
         match_end: usize,
         line_length: usize,
-        color: bool,
         prepend: &str,
     ) {
         if match_start == match_end {
-            if color {
+            if self.color {
                 print!("{}", Blue.paint(prepend));
             } else {
                 print!("{}", prepend);
@@ -86,7 +87,9 @@ impl Operation for PrintNonMatchingLine {
     }
 }
 
-pub struct PrintMatch;
+pub struct PrintMatch {
+    pub color: bool,
+}
 
 impl Operation for PrintMatch {
     /// Print the mathcing substring of a matching line.
@@ -96,13 +99,12 @@ impl Operation for PrintMatch {
         match_start: usize,
         match_end: usize,
         _line_length: usize,
-        color: bool,
         prepend: &str,
     ) {
         if match_start == match_end {
             return;
         }
-        if color {
+        if self.color {
             print!("{}", Blue.paint(prepend));
         } else {
             print!("{}", prepend);
@@ -115,7 +117,9 @@ impl Operation for PrintMatch {
     }
 }
 
-pub struct PrintExceptMatch;
+pub struct PrintExceptMatch {
+    pub color: bool,
+}
 
 impl Operation for PrintExceptMatch {
     /// Print all but the mathcing substring of a matching line.
@@ -125,14 +129,13 @@ impl Operation for PrintExceptMatch {
         match_start: usize,
         match_end: usize,
         line_length: usize,
-        color: bool,
         prepend: &str,
     ) {
         if match_start == match_end {
             return;
         }
 
-        if color {
+        if self.color {
             print!("{}", Blue.paint(prepend));
         } else {
             print!("{}", prepend);
@@ -157,7 +160,6 @@ impl Operation for Count {
         match_start: usize,
         match_end: usize,
         _line_length: usize,
-        _color: bool,
         _prepend: &str,
     ) {
         if match_start != match_end {
