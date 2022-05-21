@@ -570,9 +570,12 @@ mod tests {
         let regex: &str = "a*";
         let nfa = regex_to_nfa(regex)?;
 
-        assert_eq!(nfa.simulate("a", false), Some(1));
+        assert_eq!(nfa.simulate("a", false), Some(0));
+        assert_eq!(nfa.simulate("a", true), Some(1));
         assert_eq!(nfa.simulate("", false), Some(0));
-        assert_eq!(nfa.simulate("b", false), None);
+        assert_eq!(nfa.simulate("", true), Some(0));
+        assert_eq!(nfa.simulate("b", false), Some(0));
+        assert_eq!(nfa.simulate("b", true), Some(0));
         Ok(())
     }
 }

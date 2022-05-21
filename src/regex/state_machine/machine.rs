@@ -22,36 +22,40 @@ impl<'a> NFA<'a> {
     pub fn simulate(&self, input: &str, greedy: bool) -> Option<usize> {
         let mut simulation = NFASimulation::new(&self);
 
-        // Char byte index of the character after the longest matching
-        // substring found this far.
-        let mut first_non_matching_char_index: usize = 0;
+        // Char byte index of the character after the longest matching substring found this far, or
+        // `None` if no such substring has been found. The empty string is also
+        // considered a valid substring, so a result of `Some(0)` is a match on
+        // the empty string.
+        let mut first_non_matching_char_index: Option<usize> = None;
+
+        if simulation.in_match_state {
+            first_non_matching_char_index = Some(0);
+
+            if !greedy {
+                return first_non_matching_char_index;
+            }
+        }
 
         for (byte_index, character) in input.char_indices() {
             simulation.update_states(character);
 
             if simulation.in_match_state {
                 // TODO: UTF-16?
-                first_non_matching_char_index = byte_index + character.len_utf8();
+                first_non_matching_char_index = Some(byte_index + character.len_utf8());
 
                 if !greedy {
-                    return Some(first_non_matching_char_index);
+                    return first_non_matching_char_index;
                 }
             }
 
             // If there are no surviving states there is no need to
             // continue iterating over the characters.
             if simulation.current_states.is_empty() {
-                if first_non_matching_char_index > 0 {
-                    return Some(first_non_matching_char_index);
-                }
-                return None;
+                return first_non_matching_char_index;
             }
         }
 
-        if simulation.in_match_state || first_non_matching_char_index > 0 {
-            return Some(first_non_matching_char_index);
-        }
-        return None;
+        first_non_matching_char_index
     }
 }
 
