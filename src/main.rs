@@ -136,7 +136,7 @@ fn recursive_search(
     Ok(())
 }
 
-fn apply_operation_to_reader(
+pub fn apply_operation_to_reader(
     reader: &mut Box<dyn BufRead>,
     regex: &regex::Regex,
     operation: &mut Box<dyn operations::Operation>,

@@ -14,3 +14,8 @@ walkdir = "2"
 [dev-dependencies]
 assert_cmd = "1.0.5"
 tempfile = "3"
+criterion = "0.3"
+
+[[bench]]
+name = "cli_bench"
+harness = false
