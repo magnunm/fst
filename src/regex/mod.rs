@@ -95,6 +95,13 @@ impl<'a> Regex<'a> {
             input_for_nfa_end = byte_index_of_tail_literal.unwrap();
         }
 
+        if input_for_nfa_end < input_for_nfa_start {
+            // Both literal tail and literal head, but there is no match on the
+            // literal head after the match on the head. Then the full input can
+            // not possibly match.
+            return (0, 0);
+        }
+
         if let Some(mut result) =
             self.match_substring_using_nfa_and_tail(input, input_for_nfa_start, input_for_nfa_end)
         {
@@ -358,6 +365,16 @@ mod tests {
         let regex = Regex::new("(T|t)estcase")?;
 
         assert_eq!(regex.match_substring("Testcas教 estcase"), (0, 0));
+        Ok(())
+    }
+
+    // Test handling of both a literal head and a literal tail. In particular the case where the
+    // tail is found earlier in the input than the head. This means there is not a match.
+    #[test]
+    fn test_slicing_with_literal_head_and_tail() -> Result<(), &'static str> {
+        let regex = Regex::new("fo(o)+ bar")?;
+
+        assert_eq!(regex.match_substring(" bar foo"), (0, 0));
         Ok(())
     }
 }
