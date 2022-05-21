@@ -75,7 +75,7 @@ impl<'a> NFASimulation<'a> {
 
         // Initialize the current states of the simulation with the
         // starting states
-        let mut inital_states = NFASimulationNextStates::new(nfa);
+        let mut inital_states = NFASimulationNextStates::new(nfa, 10);
         inital_states.insert_or_follow_split(
             nfa.state_register.get_state(nfa.start_state),
             nfa.start_state,
@@ -89,7 +89,7 @@ impl<'a> NFASimulation<'a> {
     /// Use the current states to compute the next states given the
     /// character.
     fn update_states(&mut self, character: char) {
-        let mut next_states = NFASimulationNextStates::new(self.nfa);
+        let mut next_states = NFASimulationNextStates::new(self.nfa, 2 * self.current_states.len());
 
         for state_id in &self.current_states {
             let state: &State = self.nfa.state_register.get_state(*state_id);
@@ -108,10 +108,10 @@ struct NFASimulationNextStates<'a> {
 }
 
 impl<'a> NFASimulationNextStates<'a> {
-    fn new(nfa: &'a NFA) -> NFASimulationNextStates<'a> {
+    fn new(nfa: &'a NFA, state_capacity: usize) -> NFASimulationNextStates<'a> {
         NFASimulationNextStates {
             nfa,
-            states: Vec::new(),
+            states: Vec::with_capacity(state_capacity),
             contains_match_state: false,
         }
     }
