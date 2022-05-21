@@ -23,36 +23,30 @@ impl<'a> NFA<'a> {
         let mut simulation = NFASimulation::new(&self);
 
         // Char byte index of the character after the longest matching substring found this far, or
-        // `None` if no such substring has been found. The empty string is also
-        // considered a valid substring, so a result of `Some(0)` is a match on
-        // the empty string.
+        // `None` if no such substring has been found. The empty string is also considered a valid
+        // substring, so a result of `Some(0)` is a match on the empty string.
         let mut first_non_matching_char_index: Option<usize> = None;
 
-        if simulation.in_match_state {
-            first_non_matching_char_index = Some(0);
-
-            if !greedy {
-                return first_non_matching_char_index;
-            }
-        }
-
         for (byte_index, character) in input.char_indices() {
-            simulation.update_states(character);
-
             if simulation.in_match_state {
-                // TODO: UTF-16?
-                first_non_matching_char_index = Some(byte_index + character.len_utf8());
+                first_non_matching_char_index = Some(byte_index);
 
                 if !greedy {
                     return first_non_matching_char_index;
                 }
             }
 
-            // If there are no surviving states there is no need to
-            // continue iterating over the characters.
+            // If there are no surviving states there is no need to continue iterating over the
+            // characters.
             if simulation.current_states.is_empty() {
                 return first_non_matching_char_index;
             }
+
+            simulation.update_states(character);
+        }
+
+        if simulation.in_match_state {
+            first_non_matching_char_index = Some(input.len());
         }
 
         first_non_matching_char_index
