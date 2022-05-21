@@ -578,4 +578,17 @@ mod tests {
         assert_eq!(nfa.simulate("b", true), Some(0));
         Ok(())
     }
+
+    // Test that grouping without applying any operation on the group gives the same results as if
+    // the group was not there.
+    #[test]
+    fn test_grouping_with_no_operator() -> Result<(), &'static str> {
+        let regex: &str = "x(y)z";
+        let nfa = regex_to_nfa(regex)?;
+
+        assert_eq!(nfa.simulate("xy", true), None);
+        assert_eq!(nfa.simulate("xz", true), None);
+        assert_eq!(nfa.simulate("xyz", true), Some(3));
+        Ok(())
+    }
 }
