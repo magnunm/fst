@@ -121,7 +121,7 @@ fn grouping_vs_alteration_precedence() {
     let command_with_grouping = Command::cargo_bin("fst")
         .unwrap()
         .arg("-b")
-        .arg("(version|checksum) =")
+        .arg("(version|checksum)( =)*")
         .arg("Cargo.lock")
         .output()
         .unwrap();
