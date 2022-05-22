@@ -591,4 +591,22 @@ mod tests {
         assert_eq!(nfa.simulate("xyz", true), Some(3));
         Ok(())
     }
+
+    /// Test greedy vs non-greedy matching
+    #[test]
+    fn test_greedyness() -> Result<(), &'static str> {
+        let mut nfa = regex_to_nfa("a+")?;
+        assert_eq!(nfa.simulate("aaa", true), Some(3));
+        assert_eq!(nfa.simulate("aaa", false), Some(1));
+
+        nfa = regex_to_nfa("a*")?;
+        assert_eq!(nfa.simulate("aaa", true), Some(3));
+        assert_eq!(nfa.simulate("aaa", false), Some(0));
+
+        nfa = regex_to_nfa("[0-9]+")?;
+        assert_eq!(nfa.simulate("2002", true), Some("2002".len()));
+        assert_eq!(nfa.simulate("2002", false), Some(1));
+
+        Ok(())
+    }
 }
