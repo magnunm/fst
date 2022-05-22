@@ -198,22 +198,18 @@ impl<'a> StateRegister<'a> {
 
     /// Get a state by id, panic if it does not exist.
     fn get_state(&self, state_id: usize) -> &State<'a> {
-        let ref_to_state_or_none = self.states.get(state_id);
-
-        if ref_to_state_or_none.is_some() {
-            return ref_to_state_or_none.unwrap();
-        }
-        panic!("No state with id {}", state_id);
+        return self
+            .states
+            .get(state_id)
+            .expect(&format!("No state with id {}", state_id));
     }
 
     /// Get a mutable state by id, panic if it does not exist.
     fn get_mut_state(&mut self, state_id: usize) -> &mut State<'a> {
-        let mut_ref_to_state_or_none = self.states.get_mut(state_id);
-
-        if mut_ref_to_state_or_none.is_some() {
-            return mut_ref_to_state_or_none.unwrap();
-        }
-        panic!("No state with id {}", state_id);
+        return self
+            .states
+            .get_mut(state_id)
+            .expect(&format!("No state with id {}", state_id));
     }
 
     /// Connect all the unconnected (`None`) out

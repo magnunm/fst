@@ -275,8 +275,8 @@ impl<'a> NFABuilder<'a> {
         }
 
         // Connect the ends of fragment_1 to the start of fragment_2
-        let fragment_2 = pop_or_panic(&mut self.fragment_stack, None);
-        let fragment_1 = pop_or_panic(&mut self.fragment_stack, None);
+        let fragment_2 = self.fragment_stack.pop().expect("Pop of empty vector");
+        let fragment_1 = self.fragment_stack.pop().expect("Pop of empty vector");
 
         fragment_1.connect_ends(fragment_2.start, &mut self.register);
 
@@ -298,8 +298,8 @@ impl<'a> NFABuilder<'a> {
             return Err("The alteration operator requires two operands but fewer where found. Have you forgotten to escape a operator?");
         }
 
-        let fragment_2 = pop_or_panic(&mut self.fragment_stack, None);
-        let fragment_1 = pop_or_panic(&mut self.fragment_stack, None);
+        let fragment_2 = self.fragment_stack.pop().expect("Pop of empty vector");
+        let fragment_1 = self.fragment_stack.pop().expect("Pop of empty vector");
 
         // Create a new split state which has the start states of the
         // two fragments as the two choices.
@@ -326,7 +326,7 @@ impl<'a> NFABuilder<'a> {
             return Err("No valid operand found for the zero or one operator. Have you forgotten to escape a operator?");
         }
 
-        let fragment = pop_or_panic(&mut self.fragment_stack, None);
+        let fragment = self.fragment_stack.pop().expect("Pop of empty vector");
         let split_state = self.register.new_split(Some(fragment.start), None);
 
         let zero_or_one_fragment = Fragment {
@@ -346,7 +346,7 @@ impl<'a> NFABuilder<'a> {
             return Err("No valid operand found for the zero or more operator. Have you forgotten to escape a operator?");
         }
 
-        let fragment = pop_or_panic(&mut self.fragment_stack, None);
+        let fragment = self.fragment_stack.pop().expect("Pop of empty vector");
         let split_state = self.register.new_split(Some(fragment.start), None);
 
         fragment.connect_ends(split_state, &mut self.register);
@@ -368,7 +368,7 @@ impl<'a> NFABuilder<'a> {
             return Err("No valid operand found for the one or more operator. Have you forgotten to escape a operator?");
         }
 
-        let fragment = pop_or_panic(&mut self.fragment_stack, None);
+        let fragment = self.fragment_stack.pop().expect("Pop of empty vector");
         let split_state = self.register.new_split(Some(fragment.start), None);
 
         fragment.connect_ends(split_state, &mut self.register);
@@ -434,18 +434,6 @@ fn precedence(regex_operator: char) -> usize {
             panic!("Invalid regex operator")
         }
     }
-}
-
-/// pop the last element from a vector, panic if empty
-fn pop_or_panic<T>(vector: &mut Vec<T>, panic_message: Option<&'static str>) -> T {
-    let result: Option<T> = vector.pop();
-    if result.is_some() {
-        return result.unwrap();
-    }
-    if let Some(message) = panic_message {
-        panic!("{}", message);
-    }
-    panic!("Attempted pop of empty vector.");
 }
 
 fn check_for_invalid(regex: &str) -> Result<(), &'static str> {
