@@ -13,11 +13,13 @@ pub struct Regex<'a> {
     literal_string_head: &'a str,
     literal_string_tail: &'a str,
     // The NFA constructed from the regex and used internally for matching.
-    nfa: Option<NFA<'a>>,
+    nfa: NFA<'a>,
     // Whether or not the regex started with a caret (^) and/or ends with a
     // dollar ($).
     from_start: bool,
     until_end: bool,
+
+    is_pure_literal: bool,
 }
 
 impl<'a> Regex<'a> {
@@ -25,7 +27,7 @@ impl<'a> Regex<'a> {
         let starts_with_caret = regex.chars().next() == Some('^');
         let ends_with_dollar = regex.chars().rev().next() == Some('$');
 
-        // The NFA regex matching does not implemet the caret or dollar,
+        // The NFA regex matching does not implement the caret or dollar,
         // so they are removed from the regex string used internally.
         let mut start_index_stripped_regex: usize = 0;
         let mut end_index_stripped_regex: usize = regex.len();
@@ -37,16 +39,15 @@ impl<'a> Regex<'a> {
         }
 
         let stripped_regex = &regex[start_index_stripped_regex..end_index_stripped_regex];
+        let nfa = regex_to_nfa(stripped_regex)?;
 
         // Detect and record literal strings at the head and tail of
         // the regex.
         let non_literal_range = non_literal_range(stripped_regex);
-        let nfa_regex = &stripped_regex[non_literal_range.0..non_literal_range.1];
-        let nfa = if nfa_regex == "" {
-            None
-        } else {
-            Some(regex_to_nfa(nfa_regex)?)
-        };
+        let mut is_pure_literal = false;
+        if non_literal_range.0 == stripped_regex.len() {
+            is_pure_literal = true;
+        }
 
         let literal_string_head = &stripped_regex[0..non_literal_range.0];
         let literal_string_tail = &stripped_regex[non_literal_range.1..stripped_regex.len()];
@@ -58,41 +59,42 @@ impl<'a> Regex<'a> {
             nfa,
             from_start: starts_with_caret,
             until_end: ends_with_dollar,
+            is_pure_literal,
         })
     }
 
     /// Match the regex to a substring of `input`
     ///
-    /// If caret is set it will only match a substring starting from
-    /// the beginning of the input. If not it will check all possible
-    /// start positions as a possible match start. If dollar is set it
-    /// will require that the end of the substring match is the end of
-    /// the input. Literal string heads and tails on the regex are
-    /// searched for and used to reduce the input needed to run the
-    /// NFA on. The matching once a start and end position is chosen
-    /// is handled by the NFA created from the truncated regex
-    /// string. Returns the char byte index of the char where the
-    /// matching substring starts and the first char after it.
+    /// Literal string heads and tails on the regex are searched for and used to reduce the input
+    /// needed to run the NFA on. The matching once a start and end position is chosen is handled
+    /// by the NFA created from the truncated regex string. Returns the char byte index of the char
+    /// where the matching substring starts and the first char after it.
     pub fn match_substring(&self, input: &str) -> (usize, usize) {
         let mut input_for_nfa_start: usize = 0;
         if self.has_literal_string_head() {
-            let byte_index_of_head_literal = input.find(self.literal_string_head);
+            let byte_index_of_first_head_literal = input.find(self.literal_string_head);
 
-            if byte_index_of_head_literal.is_none() {
-                return (0, 0);
+            match byte_index_of_first_head_literal {
+                None => return (0, 0),
+                Some(byte_index) => {
+                    if self.is_pure_literal {
+                        return (byte_index, byte_index + self.literal_string_head.len());
+                    }
+                    input_for_nfa_start = byte_index
+                }
             }
-            input_for_nfa_start =
-                byte_index_of_head_literal.unwrap() + self.literal_string_head.len();
         }
 
         let mut input_for_nfa_end: usize = input.len();
         if self.has_literal_string_tail() {
             let byte_index_of_tail_literal = input.rfind(self.literal_string_tail);
 
-            if byte_index_of_tail_literal.is_none() {
-                return (0, 0);
+            match byte_index_of_tail_literal {
+                None => return (0, 0),
+                Some(byte_index) => {
+                    input_for_nfa_end = byte_index + self.literal_string_tail.len();
+                }
             }
-            input_for_nfa_end = byte_index_of_tail_literal.unwrap();
         }
 
         if input_for_nfa_end < input_for_nfa_start {
@@ -102,103 +104,44 @@ impl<'a> Regex<'a> {
             return (0, 0);
         }
 
-        if let Some(mut result) =
-            self.match_substring_using_nfa_and_tail(input, input_for_nfa_start, input_for_nfa_end)
-        {
-            if self.until_end && result.1 != input.len() {
-                return (0, 0);
-            }
+        let input_for_nfa = &input[input_for_nfa_start..input_for_nfa_end];
+        let relative_result: (usize, usize) =
+            match self.nfa_match_substring(input_for_nfa, self.from_start) {
+                Some(res) => res,
+                None => return (0, 0),
+            };
 
-            // Literal head is part of the match
-            result.0 -= self.literal_string_head.len();
-            return result;
-        }
-        (0, 0)
-    }
-
-    fn match_substring_using_nfa_and_tail(
-        &self,
-        input: &str,
-        mut input_for_nfa_start: usize,
-        input_for_nfa_end: usize,
-    ) -> Option<(usize, usize)> {
-        let mut relative_result;
-        loop {
-            let input_for_nfa = &input[input_for_nfa_start..input_for_nfa_end];
-
-            let relative_result_or_none = self.nfa_match_substring(
-                input_for_nfa,
-                self.from_start || self.has_literal_string_head(),
-            );
-            if relative_result_or_none.is_none() {
-                // No match!
-                return None;
-            }
-            relative_result = relative_result_or_none.unwrap();
-
-            if !self.has_literal_string_tail() {
-                // No more checks needed
-                break;
-            }
-
-            let index_after_nfa_match = input_for_nfa_start + relative_result.1;
-            if self.tail_lenght_substring_after(input, index_after_nfa_match)
-                == Some(self.literal_string_tail)
-            {
-                break;
-            }
-
-            // The first sub-string after the match is not the tail
-            // literal, so there is no match. There could still be a
-            // match further along the input though, if we haven't
-            // started from a literal head.
-            if self.has_literal_string_head() {
-                return None;
-            }
-            input_for_nfa_start += first_char_len_utf8(input_for_nfa); // TODO: UTF-16
-        }
-
-        let mut result = (
-            relative_result.0 + input_for_nfa_start,
-            relative_result.1 + input_for_nfa_start,
+        let result = (
+            input_for_nfa_start + relative_result.0,
+            input_for_nfa_start + relative_result.1,
         );
-        // Include matched literal tail in the result range (does nothing if no tail)
-        result.1 += self.literal_string_tail.len();
-        return Some(result);
+
+        // TODO: These checks can be done much earlier.
+        if self.until_end && result.1 != input.len() {
+            return (0, 0);
+        }
+        if self.from_start && result.0 != 0 {
+            return (0, 0);
+        }
+
+        return result;
     }
 
     fn nfa_match_substring(&self, input: &str, from_start: bool) -> Option<(usize, usize)> {
         if from_start {
-            if let Some(match_end_byte_index) = self.nfa_match_substring_from_start(input) {
+            if let Some(match_end_byte_index) = self.nfa.simulate(input, true) {
                 return Some((0, match_end_byte_index));
             }
             return None;
         }
 
         for (byte_index, _) in input.char_indices() {
-            if let Some(relative_match_end) =
-                self.nfa_match_substring_from_start(&input[byte_index..])
-            {
+            if let Some(relative_match_end) = self.nfa.simulate(&input[byte_index..], true) {
                 return Some((byte_index, byte_index + relative_match_end));
             }
         }
 
         return None;
-    }
-
-    fn nfa_match_substring_from_start(&self, input: &str) -> Option<usize> {
-        if let Some(nfa_inner) = &self.nfa {
-            return nfa_inner.simulate(input, true);
-        }
-        Some(0) // The empty regex matches the empty string
-    }
-
-    fn tail_lenght_substring_after(&self, input: &'a str, index: usize) -> Option<&'a str> {
-        // Assumes &input[index] is at a char boundary
-        if input.is_char_boundary(index + self.literal_string_tail.len()) {
-            return Some(&input[index..(index + self.literal_string_tail.len())]);
-        }
-        None
     }
 
     fn has_literal_string_tail(&self) -> bool {
@@ -219,12 +162,25 @@ fn non_literal_range(regex: &str) -> (usize, usize) {
         return (start_index_non_literal, start_index_non_literal);
     }
 
+    // NOTE: this will give a non-literal range which has the end one further than needed in the
+    // case of operators. This because the operators work on the char to the left of themselves,
+    // not to the right.
     let end_index_non_literal: usize =
         regex.len() - first_non_literal_regex_char(&regex.chars().rev().collect::<String>());
     return (start_index_non_literal, end_index_non_literal);
 }
 
 fn first_non_literal_regex_char(regex: &str) -> usize {
+    // Finding an alteration before any grouping means any potential literal string head found this
+    // far is not valid. This since it is alterated with some other expression which might not
+    // contain the literal string.
+    if let Some(first_alteration) = find_predicate(regex, |c| c == '|') {
+        let first_grouping = find_predicate(regex, is_regex_grouping);
+        if first_grouping.is_none() || first_grouping.unwrap() > first_alteration {
+            return 0;
+        }
+    }
+
     let mut regex_char_indices = regex.char_indices();
     let mut index_non_literal = 0;
     let mut previous_char_size_bytes: usize = 0;
@@ -236,35 +192,28 @@ fn first_non_literal_regex_char(regex: &str) -> usize {
             if is_regex_operator(character) {
                 // These work on a single character, excluding
                 // alterations which are handled separately.
-                index_non_literal -= previous_char_size_bytes;
-            }
-            if character == '|' {
-                // Finding the alteration before any gouping means any
-                // potential literal string head found this far is not
-                // valid. This since it is alterated with some other
-                // expression which might not contain the literal
-                // string.
-                index_non_literal = 0;
+                return index_non_literal - previous_char_size_bytes;
             }
 
-            break;
+            return index_non_literal;
         }
 
-        previous_char_size_bytes = character.len_utf8(); // TODO: UTF-16
+        previous_char_size_bytes = character.len_utf8();
     }
 
-    if regex_char_indices.next().is_none() {
-        index_non_literal += previous_char_size_bytes;
-    }
-
-    return index_non_literal;
+    // Done with the loop because we reached the end of the regex characters without detecting a
+    // single non-literal char. Then the last char was also literal, and we need to add its length.
+    return index_non_literal + previous_char_size_bytes;
 }
 
 fn not_part_of_regex_literal(c: char) -> bool {
     // TODO: Backslash can be handled better, the string is
     // still literal but the backslash should be removed
     // in the literal search
-    ['\\', '(', ')', '|'].contains(&c) || is_regex_operator(c) || is_regex_character_class(c)
+    ['\\', '|'].contains(&c)
+        || is_regex_grouping(c)
+        || is_regex_operator(c)
+        || is_regex_character_class(c)
 }
 
 fn is_regex_operator(c: char) -> bool {
@@ -275,11 +224,17 @@ fn is_regex_character_class(c: char) -> bool {
     ['[', ']', '.'].contains(&c)
 }
 
-fn first_char_len_utf8(s: &str) -> usize {
-    if let Some(character) = s.chars().next() {
-        return character.len_utf8();
-    }
-    0
+fn is_regex_grouping(c: char) -> bool {
+    ['(', ')'].contains(&c)
+}
+
+/// Byte index of first character matching the predicate.
+fn find_predicate(in_str: &str, predicate: fn(char) -> bool) -> Option<usize> {
+    in_str
+        .char_indices()
+        .filter(|&(_, c)| predicate(c))
+        .map(|(i, _)| i)
+        .next()
 }
 
 // Tests
@@ -385,6 +340,55 @@ mod tests {
         let regex = Regex::new("cat(s)? playing")?;
 
         assert_eq!(regex.match_substring("cats, cats playing"), (6, 18));
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_start() -> Result<(), &'static str> {
+        let regex = Regex::new("^foo?")?;
+
+        assert_eq!(regex.match_substring("foo"), (0, 3));
+        assert_eq!(regex.match_substring("fo"), (0, 2));
+        assert_eq!(regex.match_substring("  foo"), (0, 0)); // No match since from start.
+        Ok(())
+    }
+
+    #[test]
+    fn test_until_end() -> Result<(), &'static str> {
+        let regex = Regex::new(".*a$")?;
+
+        assert_eq!(regex.match_substring("app"), (0, 0));
+        assert_eq!(regex.match_substring("a "), (0, 0)); // No match since until end
+        assert_eq!(regex.match_substring("baaa"), (0, 4));
+        Ok(())
+    }
+
+    #[test]
+    fn test_non_literal_range() -> Result<(), &'static str> {
+        assert_eq!(non_literal_range("abc?"), (2, 4)); // == "c?"
+        assert_eq!(non_literal_range("abc|def"), (0, "abc|def".len()));
+        assert_eq!(non_literal_range("(abc)def"), (0, "(abc)".len()));
+
+        // NOTE: In these operator cases gives the end of the non-literal range as one to much.
+        // Limitation of the implementation that has no impact on overall correctness.
+        assert_eq!(non_literal_range("abc?de"), (2, 5)); // == "c?d"
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_first_non_literal_char() -> Result<(), &'static str> {
+        // First non-literal is `c` since it is operated on by `?`.
+        assert_eq!(first_non_literal_regex_char("abc?"), 2);
+        assert_eq!(first_non_literal_regex_char("abc?def"), 2);
+
+        assert_eq!(first_non_literal_regex_char("abc"), 3);
+        assert_eq!(first_non_literal_regex_char("foo|bar"), 0);
+        assert_eq!(first_non_literal_regex_char("ab*|x"), 0);
+        assert_eq!(first_non_literal_regex_char("ab|x+"), 0);
+        assert_eq!(first_non_literal_regex_char("a(b*|x)"), 1);
+        assert_eq!(first_non_literal_regex_char("a|(b*x)"), 0);
+
         Ok(())
     }
 }
