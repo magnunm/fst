@@ -377,4 +377,14 @@ mod tests {
         assert_eq!(regex.match_substring(" bar foo"), (0, 0));
         Ok(())
     }
+
+    // Test that even if the first match to the literal head does not lead to the true match we are
+    // able to continue.
+    #[test]
+    fn test_second_match_on_literal_head_is_true_match() -> Result<(), &'static str> {
+        let regex = Regex::new("cat(s)? playing")?;
+
+        assert_eq!(regex.match_substring("cats, cats playing"), (6, 18));
+        Ok(())
+    }
 }
