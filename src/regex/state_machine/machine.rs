@@ -20,7 +20,7 @@ impl<'a> NFA<'a> {
     /// matching substring in `input`.
     /// If no match returns `None`.
     pub fn simulate(&self, input: &str, greedy: bool) -> Option<usize> {
-        let mut simulation = NFASimulation::new(&self);
+        let mut simulation = NFASimulation::new(self);
 
         // Char byte index of the character after the longest matching substring found this far, or
         // `None` if no such substring has been found. The empty string is also considered a valid
@@ -198,18 +198,16 @@ impl<'a> StateRegister<'a> {
 
     /// Get a state by id, panic if it does not exist.
     fn get_state(&self, state_id: usize) -> &State<'a> {
-        return self
-            .states
+        self.states
             .get(state_id)
-            .expect(&format!("No state with id {}", state_id));
+            .unwrap_or_else(|| panic!("No state with id {}", state_id))
     }
 
     /// Get a mutable state by id, panic if it does not exist.
     fn get_mut_state(&mut self, state_id: usize) -> &mut State<'a> {
-        return self
-            .states
+        self.states
             .get_mut(state_id)
-            .expect(&format!("No state with id {}", state_id));
+            .unwrap_or_else(|| panic!("No state with id {}", state_id))
     }
 
     /// Connect all the unconnected (`None`) out
@@ -224,7 +222,7 @@ impl<'a> StateRegister<'a> {
                 if val.is_some() {
                     return *val;
                 }
-                return Some(to_state);
+                Some(to_state)
             })
             .collect();
     }

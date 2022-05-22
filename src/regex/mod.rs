@@ -21,7 +21,7 @@ pub struct Regex<'a> {
 
 impl<'a> Regex<'a> {
     pub fn new(regex: &'a str) -> Result<Regex, &'static str> {
-        let starts_with_caret = regex.chars().next() == Some('^');
+        let starts_with_caret = regex.starts_with('^');
         let ends_with_dollar = regex.chars().rev().next() == Some('$');
 
         let stripped_regex = Regex::strip_regex(regex, starts_with_caret, ends_with_dollar);
@@ -58,7 +58,7 @@ impl<'a> Regex<'a> {
         let literal_string_head = &regex[0..non_literal_range.0];
         let literal_string_tail = &regex[non_literal_range.1..regex.len()];
 
-        if literal_string_head.len() > 0 && literal_string_tail.len() > 0 {
+        if !literal_string_head.is_empty() && !literal_string_tail.is_empty() {
             return Ok(Box::new(LiteralSandwitchMatcher {
                 nfa,
                 literal_tail: literal_string_tail,
@@ -67,7 +67,7 @@ impl<'a> Regex<'a> {
                 until_end,
             }));
         }
-        if literal_string_head.len() > 0 {
+        if !literal_string_head.is_empty() {
             return Ok(Box::new(LiteralHeadMatcher {
                 nfa,
                 literal_head: literal_string_head,
@@ -75,7 +75,7 @@ impl<'a> Regex<'a> {
                 until_end,
             }));
         }
-        if literal_string_tail.len() > 0 {
+        if !literal_string_tail.is_empty() {
             return Ok(Box::new(LiteralTailMatcher {
                 nfa,
                 literal_tail: literal_string_tail,
@@ -101,7 +101,7 @@ impl<'a> Regex<'a> {
             regex.len()
         };
 
-        return &regex[start_index_stripped_regex..end_index_stripped_regex];
+        &regex[start_index_stripped_regex..end_index_stripped_regex]
     }
 }
 

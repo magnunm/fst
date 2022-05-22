@@ -67,7 +67,7 @@ fn main() -> io::Result<()> {
         .get_matches();
 
     let pattern = matches.value_of("PATTERN").unwrap();
-    let regex = match Regex::new(&pattern) {
+    let regex = match Regex::new(pattern) {
         Err(e) => return Err(io::Error::new(InvalidInput, e)),
         Ok(r) => r,
     };
@@ -88,19 +88,17 @@ fn main() -> io::Result<()> {
         return Ok(());
     }
 
-    let mut reader: Box<dyn BufRead>;
-
-    if let Some(filename) = matches.value_of("FILE") {
-        reader = reader_for_file(filename)?;
+    let mut reader: Box<dyn BufRead> = if let Some(filename) = matches.value_of("FILE") {
+        reader_for_file(filename)?
     } else {
         let stdin = io::stdin();
-        reader = Box::new(BufReader::new(stdin));
-    }
+        Box::new(BufReader::new(stdin))
+    };
 
     apply_operation_to_reader(&mut reader, &regex, &mut operation, "")?;
 
     let final_report = operation.final_report();
-    if final_report.len() > 0 {
+    if !final_report.is_empty() {
         println!("{}", operation.final_report());
     }
 
@@ -121,13 +119,13 @@ fn recursive_search(
         .filter(|e| !e.file_type().is_dir())
     {
         let path = entry.path().to_str().unwrap();
-        let mut reader = reader_for_file(&path)?;
+        let mut reader = reader_for_file(path)?;
         let prefix = &format!("{}:", path);
 
         match apply_operation_to_reader(&mut reader, regex, operation, prefix) {
             Ok(()) => {
                 let report = operation.final_report();
-                if report.len() > 0 {
+                if !report.is_empty() {
                     println!("{} {}", prefix, report);
                 }
             }
@@ -158,10 +156,10 @@ pub fn apply_operation_to_reader(
 
         // Strip newline from string used to match against
         line_no_newline = &line[..(bytes_read - 1)];
-        let (match_start, match_end) = regex.match_substring(&line_no_newline);
+        let (match_start, match_end) = regex.match_substring(line_no_newline);
 
         operation.apply(
-            &line_no_newline,
+            line_no_newline,
             match_start,
             match_end,
             bytes_read - 1,
@@ -192,7 +190,7 @@ fn is_hidden(entry: &DirEntry) -> bool {
     entry
         .file_name()
         .to_str()
-        .map(|s| s.starts_with(".") && s != ".")
+        .map(|s| s.starts_with('.') && s != ".")
         .unwrap_or(false)
 }
 

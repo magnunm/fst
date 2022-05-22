@@ -12,7 +12,8 @@ pub fn non_literal_range(regex: &str) -> (usize, usize) {
     // not to the right.
     let end_index_non_literal: usize =
         regex.len() - first_non_literal_regex_char(&regex.chars().rev().collect::<String>());
-    return (start_index_non_literal, end_index_non_literal);
+
+    (start_index_non_literal, end_index_non_literal)
 }
 
 fn first_non_literal_regex_char(regex: &str) -> usize {
@@ -26,11 +27,10 @@ fn first_non_literal_regex_char(regex: &str) -> usize {
         }
     }
 
-    let mut regex_char_indices = regex.char_indices();
     let mut index_non_literal = 0;
     let mut previous_char_size_bytes: usize = 0;
 
-    while let Some((char_byte_index, character)) = regex_char_indices.next() {
+    for (char_byte_index, character) in regex.char_indices() {
         index_non_literal = char_byte_index;
 
         if not_part_of_regex_literal(character) {
@@ -48,7 +48,7 @@ fn first_non_literal_regex_char(regex: &str) -> usize {
 
     // Done with the loop because we reached the end of the regex characters without detecting a
     // single non-literal char. Then the last char was also literal, and we need to add its length.
-    return index_non_literal + previous_char_size_bytes;
+    index_non_literal + previous_char_size_bytes
 }
 
 fn not_part_of_regex_literal(c: char) -> bool {

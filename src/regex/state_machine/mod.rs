@@ -115,14 +115,14 @@ pub fn regex_to_nfa<'a>(regex: &'a str) -> Result<NFA<'a>, &'static str> {
 
     let final_nfa_fragment = nfa_builder.finalize()?;
 
-    return Ok(NFA {
+    Ok(NFA {
         state_register: nfa_builder.register,
         start_state: final_nfa_fragment.start,
-    });
+    })
 }
 
 fn check_for_invalid(regex: &str) -> Result<(), &'static str> {
-    if regex == "" {
+    if regex.is_empty() {
         return Err("Empty regex pattern not supported");
     }
     // TODO: Add more checks.
@@ -132,8 +132,7 @@ fn check_for_invalid(regex: &str) -> Result<(), &'static str> {
 /// Determine if two characters are concatenated if they appear after
 /// each other in a infix regex.
 fn are_concatenated(character: char, next_character: char) -> bool {
-    return !(['*', '+', '?', '|', ')'].contains(&next_character)
-        || ['|', '('].contains(&character));
+    !(['*', '+', '?', '|', ')'].contains(&next_character) || ['|', '('].contains(&character))
 }
 
 #[cfg(test)]

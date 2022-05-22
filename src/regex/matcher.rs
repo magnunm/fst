@@ -20,7 +20,7 @@ pub struct NFAMatcher<'a> {
 impl<'a> Matcher for NFAMatcher<'a> {
     fn match_substring(&self, input: &str) -> (usize, usize) {
         match nfa_match_substring(&self.nfa, input, self.from_start) {
-            None => return (0, 0),
+            None => (0, 0),
             Some(result) => {
                 if self.until_end && result.1 != input.len() {
                     return (0, 0);
@@ -113,7 +113,7 @@ impl<'a> Matcher for LiteralHeadMatcher<'a> {
         // No check of `from_start` here since if that is true then `result.0` is guaranteed to be
         // 0 by the time we get here.
 
-        return result;
+        result
     }
 }
 
@@ -128,13 +128,10 @@ pub struct LiteralTailMatcher<'a> {
 
 impl<'a> Matcher for LiteralTailMatcher<'a> {
     fn match_substring(&self, input: &str) -> (usize, usize) {
-        let input_for_nfa_end: usize;
-        match input.rfind(self.literal_tail) {
+        let input_for_nfa_end: usize = match input.rfind(self.literal_tail) {
             None => return (0, 0),
-            Some(byte_index) => {
-                input_for_nfa_end = byte_index + self.literal_tail.len();
-            }
-        }
+            Some(byte_index) => byte_index + self.literal_tail.len(),
+        };
 
         let input_for_nfa = &input[0..input_for_nfa_end];
         let result: (usize, usize) =
@@ -149,7 +146,7 @@ impl<'a> Matcher for LiteralTailMatcher<'a> {
         // No check of `from_start` here since if that is true then `result.0` is guaranteed to be
         // 0 by the time we get here.
 
-        return result;
+        result
     }
 }
 
@@ -178,13 +175,10 @@ impl<'a> Matcher for LiteralSandwitchMatcher<'a> {
             }
         }
 
-        let input_for_nfa_end: usize;
-        match input.rfind(self.literal_tail) {
+        let input_for_nfa_end: usize = match input.rfind(self.literal_tail) {
             None => return (0, 0),
-            Some(byte_index) => {
-                input_for_nfa_end = byte_index + self.literal_tail.len();
-            }
-        }
+            Some(byte_index) => byte_index + self.literal_tail.len(),
+        };
 
         if input_for_nfa_end < input_for_nfa_start {
             // Both literal tail and literal head found, but there is no match on the literal head
@@ -210,7 +204,7 @@ impl<'a> Matcher for LiteralSandwitchMatcher<'a> {
         // No check of `from_start` here since if that is true then `result.0` is guaranteed to be
         // 0 by the time we get here.
 
-        return result;
+        result
     }
 }
 
@@ -229,5 +223,5 @@ fn nfa_match_substring(nfa: &NFA, input: &str, from_start: bool) -> Option<(usiz
         }
     }
 
-    return None;
+    None
 }

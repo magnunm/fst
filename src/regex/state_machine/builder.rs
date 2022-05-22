@@ -32,7 +32,7 @@ impl<'a> NFABuilder<'a> {
     pub fn finalize(&mut self) -> Result<Fragment, &'static str> {
         let final_fragment_or_none = self.fragment_stack.pop();
 
-        if self.fragment_stack.len() > 0 {
+        if !self.fragment_stack.is_empty() {
             // More than one fragment left after parsing all
             // characters means the passed regex was ill formed.
             // TODO: Better error message: when does this happen?
@@ -204,7 +204,7 @@ impl<'a> NFABuilder<'a> {
     ///
     /// Part of the `regex_to_nfa` algorithm.
     pub fn parse_zero_or_one_operator_to_nfa(&mut self) -> Result<(), &'static str> {
-        if self.fragment_stack.len() < 1 {
+        if self.fragment_stack.is_empty() {
             return Err("No valid operand found for the zero or one operator. Have you forgotten to escape a operator?");
         }
 
@@ -224,7 +224,7 @@ impl<'a> NFABuilder<'a> {
     ///
     /// Part of the `regex_to_nfa` algorithm.
     pub fn parse_zero_or_more_operator_to_nfa(&mut self) -> Result<(), &'static str> {
-        if self.fragment_stack.len() < 1 {
+        if self.fragment_stack.is_empty() {
             return Err("No valid operand found for the zero or more operator. Have you forgotten to escape a operator?");
         }
 
@@ -246,7 +246,7 @@ impl<'a> NFABuilder<'a> {
     ///
     /// Part of the `regex_to_nfa` algorithm.
     pub fn parse_one_or_more_operator_to_nfa(&mut self) -> Result<(), &'static str> {
-        if self.fragment_stack.len() < 1 {
+        if self.fragment_stack.is_empty() {
             return Err("No valid operand found for the one or more operator. Have you forgotten to escape a operator?");
         }
 
@@ -292,7 +292,7 @@ impl<'a> NFABuilder<'a> {
 
     /// Should we pop from the operator stack before adding the new operator?
     pub fn should_pop_from_operator_stack(&self, new_operator: char) -> bool {
-        if self.operator_stack.len() == 0 {
+        if self.operator_stack.is_empty() {
             return false;
         }
         if self.operator_stack.last() == Some(&'(') {
