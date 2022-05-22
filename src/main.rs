@@ -1,12 +1,17 @@
+mod operations;
+mod regex;
+
+use clap::{App, Arg};
 use std::boxed::Box;
 use std::fs::File;
+use std::io::ErrorKind::InvalidInput;
 use std::io::{self, BufRead, BufReader};
 use walkdir::{DirEntry, WalkDir};
 
-use clap::{App, Arg};
-
-mod operations;
-mod regex;
+use operations::{
+    Count, Operation, PrintExceptMatch, PrintMatch, PrintMatchingLine, PrintNonMatchingLine,
+};
+use regex::Regex;
 
 fn main() -> io::Result<()> {
     let matches = App::new("fst")
@@ -62,8 +67,8 @@ fn main() -> io::Result<()> {
         .get_matches();
 
     let pattern = matches.value_of("PATTERN").unwrap();
-    let regex = match regex::Regex::new(&pattern) {
-        Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidInput, e)),
+    let regex = match Regex::new(&pattern) {
+        Err(e) => return Err(io::Error::new(InvalidInput, e)),
         Ok(r) => r,
     };
 
@@ -104,8 +109,8 @@ fn main() -> io::Result<()> {
 
 fn recursive_search(
     directory_name: &str,
-    regex: &regex::Regex,
-    operation: &mut Box<dyn operations::Operation>,
+    regex: &Regex,
+    operation: &mut Box<dyn Operation>,
     verbose: bool,
 ) -> io::Result<()> {
     for entry in WalkDir::new(directory_name)
@@ -138,8 +143,8 @@ fn recursive_search(
 
 pub fn apply_operation_to_reader(
     reader: &mut Box<dyn BufRead>,
-    regex: &regex::Regex,
-    operation: &mut Box<dyn operations::Operation>,
+    regex: &Regex,
+    operation: &mut Box<dyn Operation>,
     prepend: &str,
 ) -> io::Result<()> {
     let mut line = String::new();
@@ -167,16 +172,16 @@ pub fn apply_operation_to_reader(
     Ok(())
 }
 
-fn get_operation(operation: &str, color: bool) -> io::Result<Box<dyn operations::Operation>> {
+fn get_operation(operation: &str, color: bool) -> io::Result<Box<dyn Operation>> {
     return match operation {
-        "p" => Ok(Box::new(operations::PrintMatchingLine { color })),
-        "ip" => Ok(Box::new(operations::PrintNonMatchingLine { color })),
-        "m" => Ok(Box::new(operations::PrintMatch { color })),
-        "im" => Ok(Box::new(operations::PrintExceptMatch { color })),
-        "c" => Ok(Box::new(operations::Count { count: 0 })),
+        "p" => Ok(Box::new(PrintMatchingLine { color })),
+        "ip" => Ok(Box::new(PrintNonMatchingLine { color })),
+        "m" => Ok(Box::new(PrintMatch { color })),
+        "im" => Ok(Box::new(PrintExceptMatch { color })),
+        "c" => Ok(Box::new(Count { count: 0 })),
         _ => {
             return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
+                InvalidInput,
                 format!("Unsupported operation '{}'", operation),
             ))
         }

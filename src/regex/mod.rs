@@ -1,16 +1,15 @@
+mod matcher;
 /// Regular expressions string matching by compiling the regular expression to a state machine.
+mod state_machine;
+mod utils;
+
 use std::str;
 
-mod state_machine;
-use state_machine::regex_to_nfa;
-
-mod matcher;
 use matcher::{
     LiteralHeadMatcher, LiteralMatcher, LiteralSandwitchMatcher, LiteralTailMatcher, Matcher,
     NFAMatcher,
 };
-
-mod utils;
+use state_machine::regex_to_nfa;
 use utils::non_literal_range;
 
 /// A regular expression string, and functions to match a input string to it.
