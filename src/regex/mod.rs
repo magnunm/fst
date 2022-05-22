@@ -10,6 +10,9 @@ use matcher::{
     NFAMatcher,
 };
 
+mod utils;
+use utils::non_literal_range;
+
 /// A regular expression string, and functions to match a input string to it.
 pub struct Regex<'a> {
     pub regex: &'a str,
@@ -22,176 +25,86 @@ impl<'a> Regex<'a> {
         let starts_with_caret = regex.chars().next() == Some('^');
         let ends_with_dollar = regex.chars().rev().next() == Some('$');
 
-        // The matcher does not implement the caret or dollar,
-        // so they are removed from the regex string used internally.
-        let mut start_index_stripped_regex: usize = 0;
-        let mut end_index_stripped_regex: usize = regex.len();
-        if starts_with_caret {
-            start_index_stripped_regex = '^'.len_utf8();
-        }
-        if ends_with_dollar {
-            end_index_stripped_regex -= '$'.len_utf8();
-        }
-
-        let stripped_regex = &regex[start_index_stripped_regex..end_index_stripped_regex];
-
-        // Detect and record literal strings at the head and tail of
-        // the regex.
-        let non_literal_range = non_literal_range(stripped_regex);
-
-        if non_literal_range.0 == stripped_regex.len() {
-            // The regex contains no meta-characters! We don't need to compile to or run the state
-            // machine at all.
-            return Ok(Regex {
-                regex,
-                matcher: Box::new(LiteralMatcher {
-                    to_find: stripped_regex,
-                    from_start: starts_with_caret,
-                    until_end: ends_with_dollar,
-                }),
-            });
-        }
-
-        let nfa = regex_to_nfa(stripped_regex)?;
-        let literal_string_head = &stripped_regex[0..non_literal_range.0];
-        let literal_string_tail = &stripped_regex[non_literal_range.1..stripped_regex.len()];
-
-        if literal_string_head.len() > 0 && literal_string_tail.len() > 0 {
-            return Ok(Regex {
-                regex,
-                matcher: Box::new(LiteralSandwitchMatcher {
-                    nfa,
-                    literal_tail: literal_string_tail,
-                    literal_head: literal_string_head,
-                    from_start: starts_with_caret,
-                    until_end: ends_with_dollar,
-                }),
-            });
-        }
-        if literal_string_head.len() > 0 {
-            return Ok(Regex {
-                regex,
-                matcher: Box::new(LiteralHeadMatcher {
-                    nfa,
-                    literal_head: literal_string_head,
-                    from_start: starts_with_caret,
-                    until_end: ends_with_dollar,
-                }),
-            });
-        }
-        if literal_string_tail.len() > 0 {
-            return Ok(Regex {
-                regex,
-                matcher: Box::new(LiteralTailMatcher {
-                    nfa,
-                    literal_tail: literal_string_tail,
-                    from_start: starts_with_caret,
-                    until_end: ends_with_dollar,
-                }),
-            });
-        }
-
-        Ok(Regex {
-            regex,
-            matcher: Box::new(NFAMatcher {
-                nfa,
-                from_start: starts_with_caret,
-                until_end: ends_with_dollar,
-            }),
-        })
+        let stripped_regex = Regex::strip_regex(regex, starts_with_caret, ends_with_dollar);
+        let matcher = Regex::choose_matcher(stripped_regex, starts_with_caret, ends_with_dollar)?;
+        Ok(Regex { regex, matcher })
     }
 
     /// Match the regex to a substring of `input`
     pub fn match_substring(&self, input: &str) -> (usize, usize) {
         self.matcher.match_substring(input)
     }
-}
 
-/// The smallest range of byte indices such that outside the range
-/// are purely literal strings.
-fn non_literal_range(regex: &str) -> (usize, usize) {
-    let start_index_non_literal = first_non_literal_regex_char(regex);
+    /// Choose which matcher to use for the given regex.
+    fn choose_matcher(
+        regex: &'a str,
+        from_start: bool,
+        until_end: bool,
+    ) -> Result<Box<dyn Matcher + 'a>, &'static str> {
+        // Detect and record literal strings at the head and tail of
+        // the regex.
+        let non_literal_range = non_literal_range(regex);
 
-    if start_index_non_literal == regex.len() {
-        return (start_index_non_literal, start_index_non_literal);
-    }
-
-    // NOTE: this will give a non-literal range which has the end one further than needed in the
-    // case of operators. This because the operators work on the char to the left of themselves,
-    // not to the right.
-    let end_index_non_literal: usize =
-        regex.len() - first_non_literal_regex_char(&regex.chars().rev().collect::<String>());
-    return (start_index_non_literal, end_index_non_literal);
-}
-
-fn first_non_literal_regex_char(regex: &str) -> usize {
-    // Finding an alteration before any grouping means any potential literal string head found this
-    // far is not valid. This since it is alterated with some other expression which might not
-    // contain the literal string.
-    if let Some(first_alteration) = find_predicate(regex, |c| c == '|') {
-        let first_grouping = find_predicate(regex, is_regex_grouping);
-        if first_grouping.is_none() || first_grouping.unwrap() > first_alteration {
-            return 0;
-        }
-    }
-
-    let mut regex_char_indices = regex.char_indices();
-    let mut index_non_literal = 0;
-    let mut previous_char_size_bytes: usize = 0;
-
-    while let Some((char_byte_index, character)) = regex_char_indices.next() {
-        index_non_literal = char_byte_index;
-
-        if not_part_of_regex_literal(character) {
-            if is_regex_operator(character) {
-                // These work on a single character, excluding
-                // alterations which are handled separately.
-                return index_non_literal - previous_char_size_bytes;
-            }
-
-            return index_non_literal;
+        if non_literal_range.0 == regex.len() {
+            // The regex contains no meta-characters! We don't need to compile to or run the state
+            // machine at all.
+            return Ok(Box::new(LiteralMatcher {
+                to_find: regex,
+                from_start,
+                until_end,
+            }));
         }
 
-        previous_char_size_bytes = character.len_utf8();
+        let nfa = regex_to_nfa(regex)?;
+        let literal_string_head = &regex[0..non_literal_range.0];
+        let literal_string_tail = &regex[non_literal_range.1..regex.len()];
+
+        if literal_string_head.len() > 0 && literal_string_tail.len() > 0 {
+            return Ok(Box::new(LiteralSandwitchMatcher {
+                nfa,
+                literal_tail: literal_string_tail,
+                literal_head: literal_string_head,
+                from_start,
+                until_end,
+            }));
+        }
+        if literal_string_head.len() > 0 {
+            return Ok(Box::new(LiteralHeadMatcher {
+                nfa,
+                literal_head: literal_string_head,
+                from_start,
+                until_end,
+            }));
+        }
+        if literal_string_tail.len() > 0 {
+            return Ok(Box::new(LiteralTailMatcher {
+                nfa,
+                literal_tail: literal_string_tail,
+                from_start,
+                until_end,
+            }));
+        }
+
+        Ok(Box::new(NFAMatcher {
+            nfa,
+            from_start,
+            until_end,
+        }))
     }
 
-    // Done with the loop because we reached the end of the regex characters without detecting a
-    // single non-literal char. Then the last char was also literal, and we need to add its length.
-    return index_non_literal + previous_char_size_bytes;
-}
+    /// The matcher does not implement the caret or dollar, so they must be removed from the regex
+    /// string used internally by the matcher.
+    fn strip_regex(regex: &'a str, starts_with_caret: bool, ends_with_dollar: bool) -> &'a str {
+        let start_index_stripped_regex: usize = if starts_with_caret { '^'.len_utf8() } else { 0 };
+        let end_index_stripped_regex: usize = if ends_with_dollar {
+            regex.len() - '$'.len_utf8()
+        } else {
+            regex.len()
+        };
 
-fn not_part_of_regex_literal(c: char) -> bool {
-    // TODO: Backslash can be handled better, the string is
-    // still literal but the backslash should be removed
-    // in the literal search
-    ['\\', '|'].contains(&c)
-        || is_regex_grouping(c)
-        || is_regex_operator(c)
-        || is_regex_character_class(c)
+        return &regex[start_index_stripped_regex..end_index_stripped_regex];
+    }
 }
-
-fn is_regex_operator(c: char) -> bool {
-    ['+', '?', '*', '|'].contains(&c)
-}
-
-fn is_regex_character_class(c: char) -> bool {
-    ['[', ']', '.'].contains(&c)
-}
-
-fn is_regex_grouping(c: char) -> bool {
-    ['(', ')'].contains(&c)
-}
-
-/// Byte index of first character matching the predicate.
-fn find_predicate(in_str: &str, predicate: fn(char) -> bool) -> Option<usize> {
-    in_str
-        .char_indices()
-        .filter(|&(_, c)| predicate(c))
-        .map(|(i, _)| i)
-        .next()
-}
-
-// Tests
 
 #[cfg(test)]
 mod tests {
@@ -314,35 +227,6 @@ mod tests {
         assert_eq!(regex.match_substring("app"), (0, 0));
         assert_eq!(regex.match_substring("a "), (0, 0)); // No match since until end
         assert_eq!(regex.match_substring("baaa"), (0, 4));
-        Ok(())
-    }
-
-    #[test]
-    fn test_non_literal_range() -> Result<(), &'static str> {
-        assert_eq!(non_literal_range("abc?"), (2, 4)); // == "c?"
-        assert_eq!(non_literal_range("abc|def"), (0, "abc|def".len()));
-        assert_eq!(non_literal_range("(abc)def"), (0, "(abc)".len()));
-
-        // NOTE: In these operator cases gives the end of the non-literal range as one to much.
-        // Limitation of the implementation that has no impact on overall correctness.
-        assert_eq!(non_literal_range("abc?de"), (2, 5)); // == "c?d"
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_first_non_literal_char() -> Result<(), &'static str> {
-        // First non-literal is `c` since it is operated on by `?`.
-        assert_eq!(first_non_literal_regex_char("abc?"), 2);
-        assert_eq!(first_non_literal_regex_char("abc?def"), 2);
-
-        assert_eq!(first_non_literal_regex_char("abc"), 3);
-        assert_eq!(first_non_literal_regex_char("foo|bar"), 0);
-        assert_eq!(first_non_literal_regex_char("ab*|x"), 0);
-        assert_eq!(first_non_literal_regex_char("ab|x+"), 0);
-        assert_eq!(first_non_literal_regex_char("a(b*|x)"), 1);
-        assert_eq!(first_non_literal_regex_char("a|(b*x)"), 0);
-
         Ok(())
     }
 }
