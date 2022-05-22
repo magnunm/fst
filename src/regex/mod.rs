@@ -1,33 +1,28 @@
-/// Regular expressions string matching by converting the regular expression to
-/// a NFA (non-deterministic finite automaton).
+/// Regular expressions string matching by compiling the regular expression to a state machine.
 use std::str;
 
 mod state_machine;
-use state_machine::machine::NFA;
 use state_machine::regex_to_nfa;
+
+mod matcher;
+use matcher::{
+    LiteralHeadMatcher, LiteralMatcher, LiteralSandwitchMatcher, LiteralTailMatcher, Matcher,
+    NFAMatcher,
+};
 
 /// A regular expression string, and functions to match a input string to it.
 pub struct Regex<'a> {
     pub regex: &'a str,
 
-    literal_string_head: &'a str,
-    literal_string_tail: &'a str,
-    // The NFA constructed from the regex and used internally for matching.
-    nfa: NFA<'a>,
-    // Whether or not the regex started with a caret (^) and/or ends with a
-    // dollar ($).
-    from_start: bool,
-    until_end: bool,
-
-    is_pure_literal: bool,
+    matcher: Box<dyn Matcher + 'a>,
 }
 
 impl<'a> Regex<'a> {
-    pub fn new(regex: &str) -> Result<Regex, &'static str> {
+    pub fn new(regex: &'a str) -> Result<Regex, &'static str> {
         let starts_with_caret = regex.chars().next() == Some('^');
         let ends_with_dollar = regex.chars().rev().next() == Some('$');
 
-        // The NFA regex matching does not implement the caret or dollar,
+        // The matcher does not implement the caret or dollar,
         // so they are removed from the regex string used internally.
         let mut start_index_stripped_regex: usize = 0;
         let mut end_index_stripped_regex: usize = regex.len();
@@ -39,117 +34,76 @@ impl<'a> Regex<'a> {
         }
 
         let stripped_regex = &regex[start_index_stripped_regex..end_index_stripped_regex];
-        let nfa = regex_to_nfa(stripped_regex)?;
 
         // Detect and record literal strings at the head and tail of
         // the regex.
         let non_literal_range = non_literal_range(stripped_regex);
-        let mut is_pure_literal = false;
+
         if non_literal_range.0 == stripped_regex.len() {
-            is_pure_literal = true;
+            // The regex contains no meta-characters! We don't need to compile to or run the state
+            // machine at all.
+            return Ok(Regex {
+                regex,
+                matcher: Box::new(LiteralMatcher {
+                    to_find: stripped_regex,
+                    from_start: starts_with_caret,
+                    until_end: ends_with_dollar,
+                }),
+            });
         }
 
+        let nfa = regex_to_nfa(stripped_regex)?;
         let literal_string_head = &stripped_regex[0..non_literal_range.0];
         let literal_string_tail = &stripped_regex[non_literal_range.1..stripped_regex.len()];
 
+        if literal_string_head.len() > 0 && literal_string_tail.len() > 0 {
+            return Ok(Regex {
+                regex,
+                matcher: Box::new(LiteralSandwitchMatcher {
+                    nfa,
+                    literal_tail: literal_string_tail,
+                    literal_head: literal_string_head,
+                    from_start: starts_with_caret,
+                    until_end: ends_with_dollar,
+                }),
+            });
+        }
+        if literal_string_head.len() > 0 {
+            return Ok(Regex {
+                regex,
+                matcher: Box::new(LiteralHeadMatcher {
+                    nfa,
+                    literal_head: literal_string_head,
+                    from_start: starts_with_caret,
+                    until_end: ends_with_dollar,
+                }),
+            });
+        }
+        if literal_string_tail.len() > 0 {
+            return Ok(Regex {
+                regex,
+                matcher: Box::new(LiteralTailMatcher {
+                    nfa,
+                    literal_tail: literal_string_tail,
+                    from_start: starts_with_caret,
+                    until_end: ends_with_dollar,
+                }),
+            });
+        }
+
         Ok(Regex {
             regex,
-            literal_string_head,
-            literal_string_tail,
-            nfa,
-            from_start: starts_with_caret,
-            until_end: ends_with_dollar,
-            is_pure_literal,
+            matcher: Box::new(NFAMatcher {
+                nfa,
+                from_start: starts_with_caret,
+                until_end: ends_with_dollar,
+            }),
         })
     }
 
     /// Match the regex to a substring of `input`
-    ///
-    /// Literal string heads and tails on the regex are searched for and used to reduce the input
-    /// needed to run the NFA on. The matching once a start and end position is chosen is handled
-    /// by the NFA created from the truncated regex string. Returns the char byte index of the char
-    /// where the matching substring starts and the first char after it.
     pub fn match_substring(&self, input: &str) -> (usize, usize) {
-        let mut input_for_nfa_start: usize = 0;
-        if self.has_literal_string_head() {
-            let byte_index_of_first_head_literal = input.find(self.literal_string_head);
-
-            match byte_index_of_first_head_literal {
-                None => return (0, 0),
-                Some(byte_index) => {
-                    if self.is_pure_literal {
-                        return (byte_index, byte_index + self.literal_string_head.len());
-                    }
-                    input_for_nfa_start = byte_index
-                }
-            }
-        }
-
-        let mut input_for_nfa_end: usize = input.len();
-        if self.has_literal_string_tail() {
-            let byte_index_of_tail_literal = input.rfind(self.literal_string_tail);
-
-            match byte_index_of_tail_literal {
-                None => return (0, 0),
-                Some(byte_index) => {
-                    input_for_nfa_end = byte_index + self.literal_string_tail.len();
-                }
-            }
-        }
-
-        if input_for_nfa_end < input_for_nfa_start {
-            // Both literal tail and literal head, but there is no match on the
-            // literal head after the match on the head. Then the full input can
-            // not possibly match.
-            return (0, 0);
-        }
-
-        let input_for_nfa = &input[input_for_nfa_start..input_for_nfa_end];
-        let relative_result: (usize, usize) =
-            match self.nfa_match_substring(input_for_nfa, self.from_start) {
-                Some(res) => res,
-                None => return (0, 0),
-            };
-
-        let result = (
-            input_for_nfa_start + relative_result.0,
-            input_for_nfa_start + relative_result.1,
-        );
-
-        // TODO: These checks can be done much earlier.
-        if self.until_end && result.1 != input.len() {
-            return (0, 0);
-        }
-        if self.from_start && result.0 != 0 {
-            return (0, 0);
-        }
-
-        return result;
-    }
-
-    fn nfa_match_substring(&self, input: &str, from_start: bool) -> Option<(usize, usize)> {
-        if from_start {
-            if let Some(match_end_byte_index) = self.nfa.simulate(input, true) {
-                return Some((0, match_end_byte_index));
-            }
-            return None;
-        }
-
-        for (byte_index, _) in input.char_indices() {
-            if let Some(relative_match_end) = self.nfa.simulate(&input[byte_index..], true) {
-                return Some((byte_index, byte_index + relative_match_end));
-            }
-        }
-
-        return None;
-    }
-
-    fn has_literal_string_tail(&self) -> bool {
-        self.literal_string_tail != ""
-    }
-
-    fn has_literal_string_head(&self) -> bool {
-        self.literal_string_head != ""
+        self.matcher.match_substring(input)
     }
 }
 
