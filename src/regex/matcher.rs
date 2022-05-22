@@ -56,6 +56,13 @@ impl<'a> Matcher for LiteralMatcher<'a> {
             if &input[..self.to_find.len()] == self.to_find {
                 return (0, self.to_find.len());
             }
+            return (0, 0);
+        }
+        if self.until_end {
+            if &input[(input.len() - self.to_find.len())..] == self.to_find {
+                return (input.len() - self.to_find.len(), input.len());
+            }
+            return (0, 0);
         }
 
         match input.find(self.to_find) {
@@ -76,10 +83,16 @@ pub struct LiteralHeadMatcher<'a> {
 
 impl<'a> Matcher for LiteralHeadMatcher<'a> {
     fn match_substring(&self, input: &str) -> (usize, usize) {
-        let input_for_nfa_start: usize;
-        match input.find(self.literal_head) {
-            None => return (0, 0),
-            Some(byte_index) => input_for_nfa_start = byte_index,
+        let mut input_for_nfa_start: usize = 0;
+        if self.from_start {
+            if &input[..self.literal_head.len()] != self.literal_head {
+                return (0, 0);
+            }
+        } else {
+            match input.find(self.literal_head) {
+                None => return (0, 0),
+                Some(byte_index) => input_for_nfa_start = byte_index,
+            }
         }
 
         let input_for_nfa = &input[input_for_nfa_start..];
@@ -94,13 +107,11 @@ impl<'a> Matcher for LiteralHeadMatcher<'a> {
             input_for_nfa_start + relative_result.1,
         );
 
-        // TODO: These checks can be done much earlier.
         if self.until_end && result.1 != input.len() {
             return (0, 0);
         }
-        if self.from_start && result.0 != 0 {
-            return (0, 0);
-        }
+        // No check of `from_start` here since if that is true then `result.0` is guaranteed to be
+        // 0 by the time we get here.
 
         return result;
     }
@@ -132,13 +143,11 @@ impl<'a> Matcher for LiteralTailMatcher<'a> {
                 None => return (0, 0),
             };
 
-        // TODO: These checks can be done much earlier.
         if self.until_end && result.1 != input.len() {
             return (0, 0);
         }
-        if self.from_start && result.0 != 0 {
-            return (0, 0);
-        }
+        // No check of `from_start` here since if that is true then `result.0` is guaranteed to be
+        // 0 by the time we get here.
 
         return result;
     }
@@ -157,10 +166,16 @@ pub struct LiteralSandwitchMatcher<'a> {
 
 impl<'a> Matcher for LiteralSandwitchMatcher<'a> {
     fn match_substring(&self, input: &str) -> (usize, usize) {
-        let input_for_nfa_start: usize;
-        match input.find(self.literal_head) {
-            None => return (0, 0),
-            Some(byte_index) => input_for_nfa_start = byte_index,
+        let mut input_for_nfa_start: usize = 0;
+        if self.from_start {
+            if &input[..self.literal_head.len()] != self.literal_head {
+                return (0, 0);
+            }
+        } else {
+            match input.find(self.literal_head) {
+                None => return (0, 0),
+                Some(byte_index) => input_for_nfa_start = byte_index,
+            }
         }
 
         let input_for_nfa_end: usize;
@@ -189,13 +204,11 @@ impl<'a> Matcher for LiteralSandwitchMatcher<'a> {
             input_for_nfa_start + relative_result.1,
         );
 
-        // TODO: These checks can be done much earlier.
         if self.until_end && result.1 != input.len() {
             return (0, 0);
         }
-        if self.from_start && result.0 != 0 {
-            return (0, 0);
-        }
+        // No check of `from_start` here since if that is true then `result.0` is guaranteed to be
+        // 0 by the time we get here.
 
         return result;
     }

@@ -212,21 +212,84 @@ mod tests {
 
     #[test]
     fn test_from_start() -> Result<(), &'static str> {
-        let regex = Regex::new("^foo?")?;
-
+        let mut regex = Regex::new("^foo?")?;
         assert_eq!(regex.match_substring("foo"), (0, 3));
         assert_eq!(regex.match_substring("fo"), (0, 2));
         assert_eq!(regex.match_substring("  foo"), (0, 0)); // No match since from start.
+
+        regex = Regex::new("^foo")?;
+        assert_eq!(regex.match_substring("foo"), (0, 3));
+        assert_eq!(regex.match_substring("fooo"), (0, 3));
+        assert_eq!(regex.match_substring("  foo"), (0, 0));
+
+        regex = Regex::new("^(Fizz)*Buzz")?;
+        assert_eq!(regex.match_substring("Buzz"), (0, "Buzz".len()));
+        assert_eq!(regex.match_substring("FizzBuzz"), (0, "FizzBuzz".len()));
+        assert_eq!(regex.match_substring("  Buzz"), (0, 0));
+        assert_eq!(regex.match_substring(" FizzBuzz"), (0, 0));
+
+        regex = Regex::new("^(Fizz)+(Buzz)?")?;
+        assert_eq!(regex.match_substring("Fizz"), (0, "Fizz".len()));
+        assert_eq!(regex.match_substring("FizzBuzz"), (0, "FizzBuzz".len()));
+        assert_eq!(regex.match_substring("  Fizz"), (0, 0));
+        assert_eq!(regex.match_substring(" FizzBuzz"), (0, 0));
+
+        regex = Regex::new("^xy*zz")?;
+        assert_eq!(regex.match_substring("xzz"), (0, 3));
+        assert_eq!(regex.match_substring("xyzz"), (0, 4));
+        assert_eq!(regex.match_substring(" xzz"), (0, 0));
+        assert_eq!(regex.match_substring(" xyzz"), (0, 0));
+
+        regex = Regex::new("^foo bar")?;
+        assert_eq!(regex.match_substring("foo bar"), (0, "foo bar".len()));
+        assert_eq!(regex.match_substring("foo foo bar"), (0, 0));
+
+        regex = Regex::new("^foo +bar")?;
+        assert_eq!(regex.match_substring("foo bar"), (0, "foo bar".len()));
+        assert_eq!(regex.match_substring("foo foo bar"), (0, 0));
+
         Ok(())
     }
 
     #[test]
     fn test_until_end() -> Result<(), &'static str> {
-        let regex = Regex::new(".*a$")?;
-
+        let mut regex = Regex::new(".*aa$")?;
         assert_eq!(regex.match_substring("app"), (0, 0));
-        assert_eq!(regex.match_substring("a "), (0, 0)); // No match since until end
+        assert_eq!(regex.match_substring("aa "), (0, 0)); // No match since until end
         assert_eq!(regex.match_substring("baaa"), (0, 4));
+
+        regex = Regex::new("ba+$")?;
+        assert_eq!(regex.match_substring("baa"), (0, "baa".len()));
+        assert_eq!(regex.match_substring("ba "), (0, 0));
+        assert_eq!(regex.match_substring("baab"), (0, 0));
+
+        regex = Regex::new("[0-9]+$")?;
+        assert_eq!(regex.match_substring("2022"), (0, "2022".len()));
+        assert_eq!(regex.match_substring("1967 "), (0, 0));
+        assert_eq!(
+            regex.match_substring("In 2002"),
+            ("In ".len(), "In 2002".len())
+        );
+
+        regex = Regex::new("x$")?;
+        assert_eq!(regex.match_substring("yx"), (1, 2));
+        assert_eq!(regex.match_substring("x"), (0, 1));
+        assert_eq!(regex.match_substring("xy"), (0, 0));
+
+        regex = Regex::new("xy*zz$")?;
+        assert_eq!(regex.match_substring("xzz"), (0, 3));
+        assert_eq!(regex.match_substring("xyzz"), (0, 4));
+        assert_eq!(regex.match_substring("yz "), (0, 0));
+        assert_eq!(regex.match_substring("xyz "), (0, 0));
+
+        regex = Regex::new("foo bar$")?;
+        assert_eq!(regex.match_substring("foo bar"), (0, "foo bar".len()));
+        assert_eq!(regex.match_substring("foo bar bar"), (0, 0));
+
+        regex = Regex::new("foo +bar$")?;
+        assert_eq!(regex.match_substring("foo bar"), (0, "foo bar".len()));
+        assert_eq!(regex.match_substring("foo bar bar"), (0, 0));
+
         Ok(())
     }
 }
